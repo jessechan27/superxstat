@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 248 32" width="248" height="32">
+  <g fill="#F2F3F5" font-family="Barlow, 'D-DIN', Arial, Helvetica, sans-serif" font-weight="600" font-size="20">
+    <text x="0" y="23" textLength="92" lengthAdjust="spacing">SUPER</text>
+    <text x="150" y="23" textLength="64" lengthAdjust="spacing">TAT</text>
+  </g>
+  <!-- X：一筆粗短劃 + 一道延伸的弧形掠線 -->
+  <path d="M110 7 L128 25" stroke="#F2F3F5" stroke-width="3.4" stroke-linecap="square"/>
+  <path d="M104 27 C 117 18, 130 10, 146 3" stroke="#3E6AE1" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+</svg>

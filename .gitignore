@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+Thumbs.db
+# Streamlit 機密設定 (API 金鑰等) 不可上傳
+.streamlit/secrets.toml

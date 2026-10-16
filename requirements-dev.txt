@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8
+# 統計正確性測試用的獨立參考實作
+lifelines>=0.27
+scikit-learn>=1.3
