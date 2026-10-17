@@ -35,8 +35,12 @@ def fmt_p(p: float) -> str:
 
 def sig_text(p: float, alpha: float = ALPHA) -> str:
     if p is None or not np.isfinite(p):
-        return "無法計算"
-    return f"p = {fmt_p(p)}，{'達' if p < alpha else '未達'}統計顯著 (α = {alpha})"
+        return _t("無法計算")
+    ps = fmt_p(p)
+    ptxt = f"p {ps}" if ps.startswith("<") else f"p = {ps}"  # 「p < 0.001」而不是「p = < 0.001」
+    if p < alpha:
+        return _t("{p}，達統計顯著 (α = {a})", p=ptxt, a=alpha)
+    return _t("{p}，未達統計顯著 (α = {a})", p=ptxt, a=alpha)
 
 
 def _clean(s: pd.Series) -> np.ndarray:
@@ -79,7 +83,7 @@ def describe_array(x: np.ndarray, ci: float = 0.95) -> dict:
 
 
 def descriptive(df: pd.DataFrame, values: list[str], group: str | None = None, ci: float = 0.95) -> StatResult:
-    res = StatResult("描述性統計")
+    res = StatResult(_t("描述性統計"))
     rows = []
     for v in values:
         s = pd.to_numeric(df[v], errors="coerce")
@@ -97,7 +101,7 @@ def descriptive(df: pd.DataFrame, values: list[str], group: str | None = None, c
 def normality(df: pd.DataFrame, values: list[str], group: str | None = None) -> StatResult:
     from statsmodels.stats.diagnostic import lilliefors
 
-    res = StatResult("常態性檢定")
+    res = StatResult(_t("常態性檢定"))
     rows = []
     subsets = []
     for v in values:
@@ -126,18 +130,18 @@ def normality(df: pd.DataFrame, values: list[str], group: str | None = None) -> 
     out = pd.DataFrame(rows)
     res.add("常態性檢定", out)
     if "Shapiro p" in out and (out["Shapiro p"] < ALPHA).any():
-        res.messages.append("部分組別偏離常態，建議考慮無母數檢定 (Mann-Whitney U、Kruskal-Wallis) 或資料轉換 (如 log)。")
+        res.messages.append(_t("部分組別偏離常態，建議考慮無母數檢定 (Mann-Whitney U、Kruskal-Wallis) 或資料轉換 (如 log)。"))
     else:
-        res.messages.append("各組資料未顯著偏離常態，可使用 t 檢定 / ANOVA 等母數檢定。")
-    res.messages.append("提醒：樣本數大時常態檢定很敏感，請同時參考 Q-Q 圖判斷。")
+        res.messages.append(_t("各組資料未顯著偏離常態，可使用 t 檢定 / ANOVA 等母數檢定。"))
+    res.messages.append(_t("提醒：樣本數大時常態檢定很敏感，請同時參考 Q-Q 圖判斷。"))
     return res
 
 
 def variance_homogeneity(df: pd.DataFrame, value: str, group: str) -> StatResult:
-    res = StatResult("變異數同質性檢定")
+    res = StatResult(_t("變異數同質性檢定"))
     samples = [x for x in group_samples(df, value, group).values() if len(x) >= 2]
     if len(samples) < 2:
-        res.warnings.append("至少需要兩組、每組 ≥ 2 筆資料。")
+        res.warnings.append(_t("至少需要兩組、每組 ≥ 2 筆資料。"))
         return res
     rows = []
     for name, fn in (("Levene (mean)", lambda: stats.levene(*samples, center="mean")),
@@ -149,8 +153,8 @@ def variance_homogeneity(df: pd.DataFrame, value: str, group: str) -> StatResult
     res.add("變異數同質性", pd.DataFrame(rows))
     p_bf = rows[1]["p 值"]
     res.messages.append(
-        "Brown-Forsythe 檢定" + sig_text(p_bf) + "。" +
-        ("各組變異數差異顯著，建議使用 Welch t 檢定 / Welch ANOVA / Games-Howell。" if p_bf < ALPHA else "可假設變異數同質。"))
+        _t("Brown-Forsythe 檢定 {sig}。", sig=sig_text(p_bf)) +
+        (_t("各組變異數差異顯著，建議使用 Welch t 檢定 / Welch ANOVA / Games-Howell。") if p_bf < ALPHA else _t("可假設變異數同質。")))
     return res
 
 
@@ -170,11 +174,11 @@ def effect_label(d: float) -> str:
 
 def two_group(df: pd.DataFrame, value: str, group: str, a: str, b: str, alternative: str = "two-sided",
               ci: float = 0.95) -> StatResult:
-    res = StatResult(f"兩組比較：{a} vs {b}")
+    res = StatResult(_t("兩組比較：{a} vs {b}", a=a, b=b))
     samples = group_samples(df, value, group)
     xa, xb = samples.get(str(a), np.array([])), samples.get(str(b), np.array([]))
     if len(xa) < 2 or len(xb) < 2:
-        res.warnings.append("每組至少需要 2 筆資料。")
+        res.warnings.append(_t("每組至少需要 2 筆資料。"))
         return res
     res.add("各組描述", pd.DataFrame([{"組別": a, **describe_array(xa, ci)}, {"組別": b, **describe_array(xb, ci)}]))
 
@@ -206,9 +210,9 @@ def two_group(df: pd.DataFrame, value: str, group: str, a: str, b: str, alternat
     g = d * (1 - 3 / (4 * (na + nb) - 9))
     rbc = 1 - 2 * mw.statistic / (na * nb)
     res.add("效果量", pd.DataFrame([
-        {"效果量": "Cohen's d", "數值": d, "大小": effect_label(d)},
-        {"效果量": "Hedges' g", "數值": g, "大小": effect_label(g)},
-        {"效果量": "Rank-biserial r", "數值": -rbc, "大小": ""},
+        {"效果量": "Cohen's d", "估計值": d, "大小": effect_label(d)},
+        {"效果量": "Hedges' g", "估計值": g, "大小": effect_label(g)},
+        {"效果量": "Rank-biserial r", "估計值": -rbc, "大小": ""},
     ]))
 
     p_sw = [stats.shapiro(x).pvalue if len(x) >= 3 else np.nan for x in (xa, xb)]
@@ -218,28 +222,30 @@ def two_group(df: pd.DataFrame, value: str, group: str, a: str, b: str, alternat
         rec = "Welch t 檢定" if p_lev < ALPHA else "Student t 檢定 (或 Welch t 檢定，較穩健)"
     else:
         rec = "Mann-Whitney U 檢定"
-    res.messages.append(f"常態性 (Shapiro p)：{a} = {fmt_p(p_sw[0])}，{b} = {fmt_p(p_sw[1])}；變異數同質性 (Brown-Forsythe) p = {fmt_p(p_lev)}。")
-    res.messages.append(f"**建議檢定：{rec}**")
+    res.messages.append(_t("常態性 (Shapiro p)：{a} = {pa}，{b} = {pb}；變異數同質性 (Brown-Forsythe) p = {pl}。",
+                           a=a, b=b, pa=fmt_p(p_sw[0]), pb=fmt_p(p_sw[1]), pl=fmt_p(p_lev)))
+    res.messages.append(_t("**建議檢定：{rec}**", rec=_t(rec)))
     chosen = rows[1] if (normal and p_lev < ALPHA) else rows[0] if normal else None
     if chosen:
-        res.messages.append(f"{chosen['檢定']}：t({chosen['自由度']:.1f}) = {chosen['統計量']:.3f}，{sig_text(chosen['p 值'])}；"
-                            f"平均差 = {diff:.4g} ({int(ci * 100)}% CI {chosen['CI 下限']:.4g} ~ {chosen['CI 上限']:.4g})，Cohen's d = {d:.2f} ({effect_label(d)}效果)。")
+        res.messages.append(_t("{test}：t({df:.1f}) = {t:.3f}，{sig}；平均差 = {diff:.4g} ({ci}% CI {lo:.4g} ~ {hi:.4g})，Cohen's d = {d:.2f} ({size}效果)。",
+                               test=_t(chosen["檢定"]), df=chosen["自由度"], t=chosen["統計量"], sig=sig_text(chosen["p 值"]),
+                               diff=diff, ci=int(ci * 100), lo=chosen["CI 下限"], hi=chosen["CI 上限"], d=d, size=_t(effect_label(d))))
     else:
-        res.messages.append(f"Mann-Whitney U = {mw.statistic:.1f}，{sig_text(mw.pvalue)}。")
+        res.messages.append(_t("Mann-Whitney U = {u:.1f}，{sig}。", u=mw.statistic, sig=sig_text(mw.pvalue)))
     return res
 
 
 def paired_test(df: pd.DataFrame, col1: str, col2: str, alternative: str = "two-sided", ci: float = 0.95) -> StatResult:
-    res = StatResult(f"配對比較：{col1} vs {col2}")
+    res = StatResult(_t("配對比較：{a} vs {b}", a=col1, b=col2))
     d = df[[col1, col2]].apply(pd.to_numeric, errors="coerce").dropna()
     if len(d) < 3:
-        res.warnings.append("至少需要 3 組完整配對資料。")
+        res.warnings.append(_t("至少需要 3 組完整配對資料。"))
         return res
     a, b = d[col1].to_numpy(float), d[col2].to_numpy(float)
     diff = a - b
     n = len(diff)
     res.add("描述", pd.DataFrame([{"變項": col1, **describe_array(a, ci)}, {"變項": col2, **describe_array(b, ci)},
-                                  {"變項": f"差值 ({col1} − {col2})", **describe_array(diff, ci)}]))
+                                  {"變項": _t("差值 ({a} − {b})", a=col1, b=col2), **describe_array(diff, ci)}]))
     t = stats.ttest_rel(a, b, alternative=alternative)
     se = np.std(diff, ddof=1) / np.sqrt(n)
     tc = stats.t.ppf((1 + ci) / 2, n - 1)
@@ -250,15 +256,17 @@ def paired_test(df: pd.DataFrame, col1: str, col2: str, alternative: str = "two-
         rows.append({"檢定": "Wilcoxon 符號等級檢定", "統計量": w.statistic, "自由度": np.nan, "p 值": w.pvalue,
                      "平均差": np.median(diff), "CI 下限": np.nan, "CI 上限": np.nan})
     except ValueError as err:
-        res.warnings.append(f"Wilcoxon 無法計算：{err}")
+        res.warnings.append(_t("Wilcoxon 無法計算：{err}", err=err))
     out = pd.DataFrame(rows).rename(columns={"平均差": "差異 (平均/中位數)"})
     out["結論"] = np.where(out["p 值"] < ALPHA, "顯著", "不顯著")
     res.add("檢定結果", out)
     dz = diff.mean() / np.std(diff, ddof=1)
     p_sw = stats.shapiro(diff).pvalue
-    res.add("效果量", pd.DataFrame([{"效果量": "Cohen's dz", "數值": dz, "大小": effect_label(dz)}]))
-    res.messages.append(f"差值常態性 Shapiro p = {fmt_p(p_sw)} → 建議使用 **{'配對 t 檢定' if p_sw >= ALPHA else 'Wilcoxon 符號等級檢定'}**。")
-    res.messages.append(f"配對 t 檢定：t({n - 1}) = {t.statistic:.3f}，{sig_text(t.pvalue)}；平均差 = {diff.mean():.4g}，Cohen's dz = {dz:.2f}。")
+    res.add("效果量", pd.DataFrame([{"效果量": "Cohen's dz", "估計值": dz, "大小": effect_label(dz)}]))
+    res.messages.append(_t("差值常態性 Shapiro p = {p} → 建議使用 **{rec}**。", p=fmt_p(p_sw),
+                           rec=_t("配對 t 檢定" if p_sw >= ALPHA else "Wilcoxon 符號等級檢定")))
+    res.messages.append(_t("配對 t 檢定：t({df}) = {t:.3f}，{sig}；平均差 = {diff:.4g}，Cohen's dz = {dz:.2f}。",
+                           df=n - 1, t=t.statistic, sig=sig_text(t.pvalue), diff=diff.mean(), dz=dz))
     return res
 
 
@@ -358,10 +366,10 @@ def welch_anova(samples: list[np.ndarray]) -> tuple[float, float, float, float]:
 
 
 def one_way(df: pd.DataFrame, value: str, group: str, posthoc: str = "Tukey HSD", order: list | None = None) -> StatResult:
-    res = StatResult(f"單因子比較：{value} ~ {group}")
+    res = StatResult(_t("單因子比較：{v} ~ {g}", v=value, g=group))
     samples = {k: v for k, v in group_samples(df, value, group, order).items() if len(v) >= 2}
     if len(samples) < 2:
-        res.warnings.append("至少需要兩組、每組 ≥ 2 筆資料。")
+        res.warnings.append(_t("至少需要兩組、每組 ≥ 2 筆資料。"))
         return res
     xs = list(samples.values())
     res.add("各組描述", pd.DataFrame([{"組別": k, **describe_array(v)} for k, v in samples.items()]))
@@ -415,9 +423,10 @@ def one_way(df: pd.DataFrame, value: str, group: str, posthoc: str = "Tukey HSD"
         rec = "Welch ANOVA + Games-Howell 事後檢定"
     else:
         rec = "One-way ANOVA + Tukey HSD 事後檢定"
-    res.messages.append(f"One-way ANOVA：F({dfb}, {dfw}) = {F:.3f}，{sig_text(p)}，η² = {eta2:.3f}。")
-    res.messages.append(f"Kruskal-Wallis：H({k - 1}) = {kw.statistic:.3f}，{sig_text(kw.pvalue)}。")
-    res.messages.append(f"常態性：{'各組皆符合' if normal else '有組別偏離常態'}；變異數同質性 p = {fmt_p(lev.pvalue)}。**建議：{rec}**")
+    res.messages.append(_t("One-way ANOVA：F({d1}, {d2}) = {f:.3f}，{sig}，η² = {e:.3f}。", d1=dfb, d2=dfw, f=F, sig=sig_text(p), e=eta2))
+    res.messages.append(_t("Kruskal-Wallis：H({d}) = {h:.3f}，{sig}。", d=k - 1, h=kw.statistic, sig=sig_text(kw.pvalue)))
+    res.messages.append(_t("常態性：{n}；變異數同質性 p = {p}。**建議：{rec}**",
+                           n=_t("各組皆符合" if normal else "有組別偏離常態"), p=fmt_p(lev.pvalue), rec=_t(rec)))
     return res
 
 
@@ -425,7 +434,7 @@ def two_way(df: pd.DataFrame, value: str, f1: str, f2: str, interaction: bool = 
     import statsmodels.formula.api as smf
     from statsmodels.stats.anova import anova_lm
 
-    res = StatResult(f"雙因子 ANOVA：{value} ~ {f1} × {f2}")
+    res = StatResult(_t("雙因子 ANOVA：{v} ~ {a} × {b}", v=value, a=f1, b=f2))
     d = df[[value, f1, f2]].copy()
     d[value] = pd.to_numeric(d[value], errors="coerce")
     d = d.dropna()
@@ -452,18 +461,19 @@ def two_way(df: pd.DataFrame, value: str, f1: str, f2: str, interaction: bool = 
     res.add("各組平均", cell.rename(columns={"count": "n", "mean": "平均", "std": "SD", "sem": "SEM"}))
     for _, r in tab.iterrows():
         if r["變異來源"] not in ("殘差 (Residual)", "Intercept") and np.isfinite(r["p 值"]):
-            res.messages.append(f"**{r['變異來源']}**：F = {r['F']:.3f}，{sig_text(r['p 值'])}，偏 η² = {r['偏 η² (partial)']:.3f}")
+            res.messages.append(_t("**{src}**：F = {f:.3f}，{sig}，偏 η² = {e:.3f}", src=r["變異來源"], f=r["F"], sig=sig_text(r["p 值"]),
+                                   e=r["偏 η² (partial)"]))
     resid_p = stats.shapiro(model.resid).pvalue if len(model.resid) >= 3 else np.nan
-    res.messages.append(f"殘差常態性 Shapiro p = {fmt_p(resid_p)}；R² = {model.rsquared:.3f}。")
+    res.messages.append(_t("殘差常態性 Shapiro p = {p}；R² = {r2:.3f}。", p=fmt_p(resid_p), r2=model.rsquared))
     if interaction:
-        res.messages.append("若交互作用顯著，主效應需謹慎解讀，建議進行簡單主效應分析 (可用篩選功能分層比較)。")
+        res.messages.append(_t("若交互作用顯著，主效應需謹慎解讀，建議進行簡單主效應分析 (可用篩選功能分層比較)。"))
     return res
 
 
 def rm_anova(df: pd.DataFrame, value: str, subject: str, within: str) -> StatResult:
     from statsmodels.stats.anova import AnovaRM
 
-    res = StatResult(f"重複量測 ANOVA：{value} ~ {within} (受試者：{subject})")
+    res = StatResult(_t("重複量測 ANOVA：{v} ~ {w} (受試者：{s})", v=value, w=within, s=subject))
     d = df[[value, subject, within]].copy()
     d[value] = pd.to_numeric(d[value], errors="coerce")
     d = d.dropna()
@@ -473,7 +483,7 @@ def rm_anova(df: pd.DataFrame, value: str, subject: str, within: str) -> StatRes
     order = list(dict.fromkeys(d[within]))
     wide = wide[[c for c in order if c in wide.columns]]
     if wide.shape[0] < 3 or wide.shape[1] < 2:
-        res.warnings.append("需要至少 3 位受試者在每個時間點/條件都有資料。")
+        res.warnings.append(_t("需要至少 3 位受試者在每個時間點/條件都有資料。"))
         return res
     long = wide.reset_index().melt(id_vars=subject, var_name=within, value_name=value)
     r = AnovaRM(long, depvar=value, subject=subject, within=[within]).fit()
@@ -496,15 +506,17 @@ def rm_anova(df: pd.DataFrame, value: str, subject: str, within: str) -> StatRes
         ph["Wilcoxon p (Holm)"] = p_adjust_array(ph["Wilcoxon p"].to_numpy(), "holm")
     res.add("事後成對比較", ph)
     p = tab["p 值"].iloc[0]
-    res.messages.append(f"重複量測 ANOVA：F({tab['df1'].iloc[0]:.0f}, {tab['df2'].iloc[0]:.0f}) = {tab['F'].iloc[0]:.3f}，{sig_text(p)}。")
-    res.messages.append(f"Friedman：χ² = {fr.statistic:.3f}，{sig_text(fr.pvalue)}。（僅納入所有條件皆有資料的 {wide.shape[0]} 位受試者）")
-    res.messages.append("註：未進行球形檢定校正 (Greenhouse-Geisser)，若條件數 ≥ 3 且違反球形假設，請參考 Friedman 結果。")
+    res.messages.append(_t("重複量測 ANOVA：F({d1:.0f}, {d2:.0f}) = {f:.3f}，{sig}。", d1=tab["df1"].iloc[0], d2=tab["df2"].iloc[0],
+                           f=tab["F"].iloc[0], sig=sig_text(p)))
+    res.messages.append(_t("Friedman：χ² = {c:.3f}，{sig}。（僅納入所有條件皆有資料的 {n} 位受試者）", c=fr.statistic,
+                           sig=sig_text(fr.pvalue), n=wide.shape[0]))
+    res.messages.append(_t("註：未進行球形檢定校正 (Greenhouse-Geisser)，若條件數 ≥ 3 且違反球形假設，請參考 Friedman 結果。"))
     return res
 
 
 # ============================================================ 相關與迴歸
 def correlation(df: pd.DataFrame, cols: list[str], method: str = "pearson", ci: float = 0.95) -> StatResult:
-    res = StatResult(f"相關分析 ({method.title()})")
+    res = StatResult(_t("相關分析 ({name})", name=method.title()))
     d = df[cols].apply(pd.to_numeric, errors="coerce")
     fn = {"pearson": stats.pearsonr, "spearman": stats.spearmanr, "kendall": stats.kendalltau}[method]
     rows = []
@@ -534,7 +546,7 @@ def correlation(df: pd.DataFrame, cols: list[str], method: str = "pearson", ci: 
     res.add("相關係數矩陣", r_mat.reset_index(names="變項"))
     res.add("p 值矩陣", p_mat.reset_index(names="變項"))
     for r in out.head(10).itertuples():
-        res.messages.append(f"{r._1} 與 {r._2}：r = {r.r:.3f} ({r.強度})，{sig_text(r._8)}，n = {r.n}")
+        res.messages.append(_t("{a} 與 {b}：r = {r:.3f} ({s})，{sig}，n = {n}", a=r._1, b=r._2, r=r.r, s=_t(r.強度), sig=sig_text(r._8), n=r.n))
     return res
 
 
@@ -544,7 +556,7 @@ def linear_regression(df: pd.DataFrame, y: str, xs: list[str], cat_xs: list[str]
     from statsmodels.stats.stattools import durbin_watson
 
     cat_xs = cat_xs or []
-    res = StatResult(f"線性迴歸：{y} ~ {' + '.join(xs + cat_xs)}")
+    res = StatResult(_t("線性迴歸：{y} ~ {x}", y=y, x=" + ".join(xs + cat_xs)))
     cols = [y] + xs + cat_xs
     d = df[cols].copy()
     for c in [y] + xs:
@@ -579,13 +591,14 @@ def linear_regression(df: pd.DataFrame, y: str, xs: list[str], cat_xs: list[str]
         X = model.model.exog
         for i, name in enumerate(model.model.exog_names):
             if name != "Intercept":
-                diag.append({"診斷": f"VIF：{_pretty_term(name)}", "統計量": variance_inflation_factor(X, i), "p 值": np.nan})
+                diag.append({"診斷": _t("VIF：{x}", x=_pretty_term(name)), "統計量": variance_inflation_factor(X, i), "p 值": np.nan})
     res.add("模型診斷", pd.DataFrame(diag))
-    res.messages.append(f"模型 R² = {model.rsquared:.3f} (調整後 {model.rsquared_adj:.3f})，F 檢定 {sig_text(model.f_pvalue)}。")
+    res.messages.append(_t("模型 R² = {r2:.3f} (調整後 {adj:.3f})，F 檢定 {sig}。", r2=model.rsquared, adj=model.rsquared_adj,
+                           sig=sig_text(model.f_pvalue)))
     for r in coef.itertuples():
         if r.變項 != "Intercept":
-            res.messages.append(f"{r.變項}：B = {r._2:.4g} (95% CI {r._6:.4g} ~ {r._7:.4g})，{sig_text(r._5)}")
-    res.messages.append("VIF > 5 (或 10) 表示共線性問題。")
+            res.messages.append(_t("{v}：B = {b:.4g} (95% CI {lo:.4g} ~ {hi:.4g})，{sig}", v=r.變項, b=r._2, lo=r._6, hi=r._7, sig=sig_text(r._5)))
+    res.messages.append(_t("VIF > 5 (或 10) 表示共線性問題。"))
     return res
 
 
@@ -601,14 +614,14 @@ def logistic_regression(df: pd.DataFrame, y: str, positive, xs: list[str], cat_x
     import statsmodels.formula.api as smf
 
     cat_xs = cat_xs or []
-    res = StatResult(f"邏輯迴歸：{y} = {positive} ~ {' + '.join(xs + cat_xs)}")
+    res = StatResult(_t("邏輯迴歸：{y} = {pos} ~ {x}", y=y, pos=positive, x=" + ".join(xs + cat_xs)))
     d = df[[y] + xs + cat_xs].copy()
     for c in xs:
         d[c] = pd.to_numeric(d[c], errors="coerce")
     d = d.dropna()
     d["_y"] = (d[y].astype(str) == str(positive)).astype(int)
     if d["_y"].nunique() < 2:
-        res.warnings.append("結果變項只有一個類別，無法分析。")
+        res.warnings.append(_t("結果變項只有一個類別，無法分析。"))
         return res
     terms = [_q(x) for x in xs] + [f"C({_q(c)})" for c in cat_xs]
     model = smf.logit(f"_y ~ {' + '.join(terms) or '1'}", data=d).fit(disp=0, maxiter=200)
@@ -627,16 +640,16 @@ def logistic_regression(df: pd.DataFrame, y: str, positive, xs: list[str], cat_x
         "n": int(model.nobs), "事件數": int(d["_y"].sum()), "McFadden 偽 R²": model.prsquared, "LR χ²": model.llr,
         "LR 檢定 p": model.llr_pvalue, "AIC": model.aic, "BIC": model.bic, "AUC (C 統計量)": auc, "準確率 (cutoff 0.5)": acc,
     }]))
-    res.messages.append(f"模型 LR 檢定 {sig_text(model.llr_pvalue)}，AUC = {auc:.3f}。")
+    res.messages.append(_t("模型 LR 檢定 {sig}，AUC = {auc:.3f}。", sig=sig_text(model.llr_pvalue), auc=auc))
     for r in coef.itertuples():
         if r.變項 != "Intercept":
-            res.messages.append(f"{r.變項}：OR = {r._6:.3f} (95% CI {r._7:.3f} ~ {r._8:.3f})，{sig_text(r._5)}")
+            res.messages.append(_t("{v}：OR = {o:.3f} (95% CI {lo:.3f} ~ {hi:.3f})，{sig}", v=r.變項, o=r._6, lo=r._7, hi=r._8, sig=sig_text(r._5)))
     return res
 
 
 # ============================================================ 類別資料
 def contingency(df: pd.DataFrame, row: str, col: str, count: str | None = None, yates: bool = True) -> StatResult:
-    res = StatResult(f"列聯表分析：{row} × {col}")
+    res = StatResult(_t("列聯表分析：{r} × {c}", r=row, c=col))
     d = df.dropna(subset=[row, col])
     if count:
         ct = d.pivot_table(index=row, columns=col, values=count, aggfunc="sum", fill_value=0)
@@ -677,7 +690,7 @@ def contingency(df: pd.DataFrame, row: str, col: str, count: str | None = None, 
     rows.append({"檢定": "Cramér's V (效果量)", "統計量": v, "df": np.nan, "p 值": np.nan})
     res.add("檢定結果", pd.DataFrame(rows))
     low = (exp < 5).mean()
-    res.messages.append(f"卡方檢定：χ²({dof}) = {chi2:.3f}，{sig_text(p)}，Cramér's V = {v:.3f}。")
+    res.messages.append(_t("卡方檢定：χ²({df}) = {c:.3f}，{sig}，Cramér's V = {v:.3f}。", df=dof, c=chi2, sig=sig_text(p), v=v))
     if low > 0.2:
         res.warnings.append(_t("有 {pct:.0f}% 的期望次數 < 5，卡方檢定可能不準確，請參考 Fisher 精確檢定。", pct=low * 100) if ct.shape == (2, 2)
                             else _t("有 {pct:.0f}% 的期望次數 < 5，卡方檢定可能不準確，建議合併類別。", pct=low * 100))
@@ -767,7 +780,7 @@ def logrank_test(time, event, groups) -> tuple[float, int, float]:
 
 def survival_analysis(df: pd.DataFrame, time: str, event: str, group: str | None = None,
                       landmarks: list[float] | None = None, correction: str = "holm") -> StatResult:
-    res = StatResult(f"存活分析 (Kaplan-Meier)：{time}")
+    res = StatResult(_t("存活分析 (Kaplan-Meier)：{t}", t=time))
     d = df[[c for c in (time, event, group) if c]].copy()
     d[time] = pd.to_numeric(d[time], errors="coerce")
     d = d.dropna()
@@ -792,7 +805,7 @@ def survival_analysis(df: pd.DataFrame, time: str, event: str, group: str | None
     if group and len(groups) >= 2:
         chi2, dof, p = logrank_test(d[time], d["_e"], d[group])
         res.add("Log-rank 檢定", pd.DataFrame([{"χ²": chi2, "df": dof, "p 值": p}]))
-        res.messages.append(f"Log-rank 檢定：χ²({dof}) = {chi2:.3f}，{sig_text(p)}。")
+        res.messages.append(_t("Log-rank 檢定：χ²({df}) = {c:.3f}，{sig}。", df=dof, c=chi2, sig=sig_text(p)))
         if len(groups) > 2:
             pr = []
             for a, b in itertools.combinations(groups, 2):
@@ -801,10 +814,10 @@ def survival_analysis(df: pd.DataFrame, time: str, event: str, group: str | None
                 pr.append({"group1": a, "group2": b, "χ²": c2, "p": pp})
             prd = pd.DataFrame(pr)
             prd["p_adj"] = p_adjust_array(prd["p"].to_numpy(), correction)
-            res.add(f"成對 log-rank ({correction})", prd)
+            res.add(_t("成對 log-rank ({c})", c=correction), prd)
     for r in summ.itertuples():
-        med = "未達 (NR)" if not np.isfinite(r.中位存活時間) else f"{r.中位存活時間:.2f}"
-        res.messages.append(f"{r.組別}：n = {r.n}，事件 {r.事件數}，中位存活時間 = {med}")
+        med = _t("未達 (NR)") if not np.isfinite(r.中位存活時間) else f"{r.中位存活時間:.2f}"
+        res.messages.append(_t("{g}：n = {n}，事件 {e}，中位存活時間 = {med}", g=_t(str(r.組別)), n=r.n, e=r.事件數, med=med))
     return res
 
 
@@ -813,7 +826,7 @@ def cox_regression(df: pd.DataFrame, time: str, event: str, covariates: list[str
     import statsmodels.formula.api as smf
 
     cat_covs = cat_covs or []
-    res = StatResult("Cox 比例風險迴歸")
+    res = StatResult(_t("Cox 比例風險迴歸"))
     d = df[[time, event] + covariates + cat_covs].copy()
     d[time] = pd.to_numeric(d[time], errors="coerce")
     for c in covariates:
@@ -822,7 +835,7 @@ def cox_regression(df: pd.DataFrame, time: str, event: str, covariates: list[str
     d["_e"] = _event01(d[event])
     terms = [_q(c) for c in covariates] + [f"C({_q(c)})" for c in cat_covs]
     if not terms:
-        res.warnings.append("請至少選擇一個共變數。")
+        res.warnings.append(_t("請至少選擇一個共變數。"))
         return res
     model = smf.phreg(f"{_q(time)} ~ {' + '.join(terms)}", data=d, status=d["_e"].to_numpy(), ties=ties).fit()
     names = model.model.exog_names
@@ -836,8 +849,8 @@ def cox_regression(df: pd.DataFrame, time: str, event: str, covariates: list[str
     res.add("Cox 迴歸結果", out)
     res.add("模型資訊", pd.DataFrame([{"n": len(d), "事件數": int(d["_e"].sum()), "Log-likelihood": model.llf, "ties": ties}]))
     for r in out.itertuples():
-        res.messages.append(f"{r.變項}：HR = {r._4:.3f} (95% CI {r._5:.3f} ~ {r._6:.3f})，{sig_text(r._7)}")
-    res.messages.append("HR > 1 表示風險增加；類別變項以第一個類別為參考組。")
+        res.messages.append(_t("{v}：HR = {h:.3f} (95% CI {lo:.3f} ~ {hi:.3f})，{sig}", v=r.變項, h=r._4, lo=r._5, hi=r._6, sig=sig_text(r._7)))
+    res.messages.append(_t("HR > 1 表示風險增加；類別變項以第一個類別為參考組。"))
     return res
 
 
@@ -880,21 +893,22 @@ def _delong_components(y: np.ndarray, scores: np.ndarray):
 
 
 def roc_analysis(df: pd.DataFrame, truth: str, positive, scores: list[str], ci: float = 0.95) -> StatResult:
-    res = StatResult(f"ROC 分析：{truth} = {positive}")
+    res = StatResult(_t("ROC 分析：{y} = {pos}", y=truth, pos=positive))
     d = df[[truth] + scores].copy()
     for c in scores:
         d[c] = pd.to_numeric(d[c], errors="coerce")
     d = d.dropna()
     y = (d[truth].astype(str) == str(positive)).astype(int).to_numpy()
     if y.sum() == 0 or y.sum() == len(y):
-        res.warnings.append("需要同時有陽性與陰性個案。")
+        res.warnings.append(_t("需要同時有陽性與陰性個案。"))
         return res
     z = stats.norm.ppf((1 + ci) / 2)
-    rows = []
+    rows, flips = [], []
     for c in scores:
         s = d[c].to_numpy(float)
         fpr, tpr, thr, auc = roc_curve(y, s)
         flipped = auc < 0.5
+        flips.append(flipped)
         if flipped:
             s = -s
             fpr, tpr, thr, auc = roc_curve(y, s)
@@ -909,7 +923,7 @@ def roc_analysis(df: pd.DataFrame, truth: str, positive, scores: list[str], ci: 
         tn = int((~pred & (y == 0)).sum())
         fn = int((~pred & (y == 1)).sum())
         rows.append({
-            "指標": c + (" (反向)" if flipped else ""), "AUC": auc, "標準誤": se,
+            "指標": c + (_t(" (反向)") if flipped else ""), "AUC": auc, "標準誤": se,
             "AUC CI 下限": max(auc - z * se, 0), "AUC CI 上限": min(auc + z * se, 1),
             "p 值 (vs 0.5)": 2 * stats.norm.sf(abs(auc - 0.5) / se) if se > 0 else np.nan,
             "最佳切點 (Youden)": -cut if flipped else cut, "敏感度": tpr[bi], "特異度": 1 - fpr[bi],
@@ -919,7 +933,7 @@ def roc_analysis(df: pd.DataFrame, truth: str, positive, scores: list[str], ci: 
     out = pd.DataFrame(rows)
     res.add("ROC 結果", out)
     if len(scores) >= 2:
-        S = np.vstack([d[c].to_numpy(float) * (-1 if r["指標"].endswith("(反向)") else 1) for c, r in zip(scores, rows)])
+        S = np.vstack([d[c].to_numpy(float) * (-1 if f else 1) for c, f in zip(scores, flips)])
         aucs, cov = _delong_components(y, S)
         pr = []
         for i, j2 in itertools.combinations(range(len(scores)), 2):
@@ -929,9 +943,10 @@ def roc_analysis(df: pd.DataFrame, truth: str, positive, scores: list[str], ci: 
                        "p 值 (DeLong)": 2 * stats.norm.sf(abs(zz)) if np.isfinite(zz) else np.nan})
         res.add("AUC 比較 (DeLong 檢定)", pd.DataFrame(pr))
     for r in rows:
-        res.messages.append(f"{r['指標']}：AUC = {r['AUC']:.3f} ({int(ci * 100)}% CI {r['AUC CI 下限']:.3f} ~ {r['AUC CI 上限']:.3f})；"
-                            f"最佳切點 {r['最佳切點 (Youden)']:.4g}，敏感度 {r['敏感度']:.1%}、特異度 {r['特異度']:.1%}")
-    res.messages.append("AUC 判讀：0.9 以上極佳、0.8–0.9 良好、0.7–0.8 尚可、0.5–0.7 不佳。")
+        res.messages.append(_t("{m}：AUC = {auc:.3f} ({ci}% CI {lo:.3f} ~ {hi:.3f})；最佳切點 {cut:.4g}，敏感度 {se:.1%}、特異度 {sp:.1%}",
+                               m=r["指標"], auc=r["AUC"], ci=int(ci * 100), lo=r["AUC CI 下限"], hi=r["AUC CI 上限"],
+                               cut=r["最佳切點 (Youden)"], se=r["敏感度"], sp=r["特異度"]))
+    res.messages.append(_t("AUC 判讀：0.9 以上極佳、0.8–0.9 良好、0.7–0.8 尚可、0.5–0.7 不佳。"))
     return res
 
 
@@ -948,7 +963,7 @@ def fit_4pl(x, y) -> dict:
     ok = np.isfinite(x) & np.isfinite(y) & (x > 0)
     lx, yy = np.log10(x[ok]), y[ok]
     if len(lx) < 4 or len(np.unique(lx)) < 3:
-        raise ValueError("4PL 擬合至少需要 3 個不同的正濃度、4 個資料點")
+        raise ValueError(_t("4PL 擬合至少需要 3 個不同的正濃度、4 個資料點"))
     slope = np.sign(np.corrcoef(lx, yy)[0, 1]) or 1.0
     p0 = [yy.min(), yy.max(), np.median(lx), slope]
     if slope < 0:
@@ -966,7 +981,7 @@ def fit_4pl(x, y) -> dict:
 
 
 def dose_response(df: pd.DataFrame, x: str, y: str, group: str | None = None) -> StatResult:
-    res = StatResult(f"劑量反應 4PL 擬合：{y} ~ {x}")
+    res = StatResult(_t("劑量反應 4PL 擬合：{y} ~ {x}", y=y, x=x))
     rows = []
     groups = list(dict.fromkeys(df[group].dropna().tolist())) if group else [None]
     for lv in groups:
@@ -977,19 +992,20 @@ def dose_response(df: pd.DataFrame, x: str, y: str, group: str | None = None) ->
                          "EC50 95% CI 上限": f["ec50_high"], "logEC50": f["logec50"], "Hill 斜率": f["hill"],
                          "Bottom": f["bottom"], "Top": f["top"], "R²": f["r2"], "n": f["n"]})
         except Exception as err:
-            res.warnings.append(f"{lv}：擬合失敗 ({err})")
+            res.warnings.append(_t("{g}：擬合失敗 ({err})", g=lv, err=err))
     out = pd.DataFrame(rows)
     res.add("4PL 參數", out)
     for r in rows:
-        res.messages.append(f"{r['組別']}：EC50 = {r['EC50/IC50']:.4g} (95% CI {r['EC50 95% CI 下限']:.4g} ~ {r['EC50 95% CI 上限']:.4g})，Hill = {r['Hill 斜率']:.2f}，R² = {r['R²']:.3f}")
+        res.messages.append(_t("{g}：EC50 = {e:.4g} (95% CI {lo:.4g} ~ {hi:.4g})，Hill = {h:.2f}，R² = {r2:.3f}", g=_t(str(r["組別"])),
+                               e=r["EC50/IC50"], lo=r["EC50 95% CI 下限"], hi=r["EC50 95% CI 上限"], h=r["Hill 斜率"], r2=r["R²"]))
     if (pd.to_numeric(df[x], errors="coerce") <= 0).any():
-        res.warnings.append("濃度 ≤ 0 的資料點 (如空白對照) 無法取對數，已排除於擬合之外。")
+        res.warnings.append(_t("濃度 ≤ 0 的資料點 (如空白對照) 無法取對數，已排除於擬合之外。"))
     return res
 
 
 # ============================================================ 其他
 def p_adjust_table(df: pd.DataFrame, pcol: str, methods: list[str]) -> StatResult:
-    res = StatResult("多重比較校正")
+    res = StatResult(_t("多重比較校正"))
     out = df.copy()
     p = pd.to_numeric(out[pcol], errors="coerce").to_numpy()
     names = {"bonferroni": "Bonferroni", "holm": "Holm", "fdr_bh": "FDR (BH)", "fdr_by": "FDR (BY)", "sidak": "Šidák", "hommel": "Hommel"}
@@ -998,7 +1014,7 @@ def p_adjust_table(df: pd.DataFrame, pcol: str, methods: list[str]) -> StatResul
     res.add("校正結果", out)
     for m in methods:
         col = f"{pcol}_{names.get(m, m)}"
-        res.messages.append(f"{names.get(m, m)}：{int((out[col] < ALPHA).sum())} / {int(np.isfinite(p).sum())} 項 p < {ALPHA}")
+        res.messages.append(_t("{m}：{k} / {n} 項 p < {a}", m=names.get(m, m), k=int((out[col] < ALPHA).sum()), n=int(np.isfinite(p).sum()), a=ALPHA))
     return res
 
 
@@ -1006,7 +1022,7 @@ def power_analysis(test: str, solve: str, effect: float | None, n: float | None,
                    ratio: float = 1.0, k_groups: int = 3, alternative: str = "two-sided") -> StatResult:
     from statsmodels.stats import power as smp
 
-    res = StatResult("檢定力 / 樣本數估算")
+    res = StatResult(_t("檢定力 / 樣本數估算"))
     kw = dict(effect_size=effect, alpha=alpha, power=power)
     if test == "兩獨立樣本 t 檢定":
         engine = smp.TTestIndPower()
@@ -1031,10 +1047,10 @@ def power_analysis(test: str, solve: str, effect: float | None, n: float | None,
     res.add("結果", pd.DataFrame([row]))
     if solve == "樣本數":
         need = int(np.ceil(value))
-        res.messages.append(f"**所需樣本數：{need}**" + (" (每組)" if test == "兩獨立樣本 t 檢定" else " (配對數)" if "配對" in test else " (總數)"))
+        res.messages.append(_t("**所需樣本數：{n}**", n=need) + _t(" (每組)" if test == "兩獨立樣本 t 檢定" else " (配對數)" if "配對" in test else " (總數)"))
     elif solve == "檢定力":
-        res.messages.append(f"**檢定力 = {value:.3f}**")
+        res.messages.append(_t("**檢定力 = {v:.3f}**", v=value))
     else:
-        res.messages.append(f"**可偵測的最小效果量 = {value:.3f}**")
-    res.messages.append("效果量參考：Cohen's d 0.2 小、0.5 中、0.8 大；ANOVA 的 Cohen's f 0.1 小、0.25 中、0.4 大。")
+        res.messages.append(_t("**可偵測的最小效果量 = {v:.3f}**", v=value))
+    res.messages.append(_t("效果量參考：Cohen's d 0.2 小、0.5 中、0.8 大；ANOVA 的 Cohen's f 0.1 小、0.25 中、0.4 大。"))
     return res

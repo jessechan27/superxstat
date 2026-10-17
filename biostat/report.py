@@ -317,7 +317,7 @@ def _compare_one(work: pd.DataFrame, v: str, g: str, levels: list, verdict: tupl
         r = bs.two_group(work, v, g, keys[0], keys[1])
         t = dict(r.tables)
         row = t["檢定結果"].set_index("檢定").loc[_TEST_ROW[method]]
-        eff = t["效果量"].set_index("效果量")["數值"]
+        eff = t["效果量"].set_index("效果量")["估計值"]
         stat, p = float(row["統計量"]), float(row["p 值"])
         if method == "mwu":
             out.update(stat_txt=f"U = {stat:.1f}", es_name="rank-biserial r", es=float(eff["Rank-biserial r"]),

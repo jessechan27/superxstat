@@ -5,9 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from .. import export, plots
+from .. import export, i18n, plots
 from .. import stats as bs
 from ..data import categorical_columns, guess_column, numeric_columns
+from ..i18n import _
 from . import common as ui
 from .page_plot import style_from_state
 
@@ -31,7 +32,28 @@ GUIDE = """
 **流程建議**：先用「常態性檢定」與 Q-Q 圖檢查分布 → 「變異數同質性」→ 選擇對應檢定 → 多組比較記得做事後檢定與多重比較校正。
 """
 
-ANALYSES = [
+GUIDE_EN = """
+| Research question | Data | Normal / equal variances | Otherwise (non-parametric) |
+|---|---|---|---|
+| Do two independent groups differ? | Numeric + 2 groups | Student's t / Welch's t-test | Mann-Whitney U |
+| Before/after change in the same subjects | Two numeric columns (paired) | Paired t-test | Wilcoxon signed-rank |
+| Do three or more groups differ? | Numeric + ≥3 groups | One-way ANOVA + Tukey (unequal variances: Welch ANOVA + Games-Howell) | Kruskal-Wallis + Dunn |
+| Effects and interaction of two factors | Numeric + two factors | Two-way ANOVA | Transform (log) or stratify |
+| Repeated measures (several time points) | Long format + subject ID | Repeated-measures ANOVA | Friedman |
+| Association between two numeric variables | Two numeric | Pearson correlation | Spearman / Kendall |
+| Predict a numeric outcome from several variables | Numeric outcome | Linear regression | — |
+| Predict a binary outcome (disease yes/no) | 0/1 outcome | Logistic regression (odds ratio) | — |
+| Are two categorical variables related? | Category × category | Chi-square test | Expected < 5: Fisher's exact test |
+| Compare survival times | Time + event | Kaplan-Meier + log-rank | — |
+| Risk factors for survival | Time + event + covariates | Cox proportional hazards (HR) | — |
+| Discrimination of a diagnostic marker | 0/1 + continuous marker | ROC / AUC | — |
+| Drug potency | Concentration + response | 4PL curve (EC50 / IC50) | — |
+
+**Suggested workflow**: check distributions with the normality test and Q-Q plots → test equal variances → choose the matching test →
+for multiple groups, run post hoc tests with multiple-comparison correction.
+"""
+
+ANALYSES = [  # 中文為內部鍵值，介面以 format_func=_ 翻譯
     "描述性統計",
     "常態性檢定",
     "變異數同質性檢定",
@@ -66,7 +88,7 @@ def _cat_sel(label, df, key, optional=False, exclude=(), hints=()):
     free = [c for c in cats if c not in exclude]
     guess = guess_column(free, list(hints)) if hints else None
     if optional:
-        return ui.selectbox(label, [None] + cats, key, default=guess, format_func=lambda c: "（無）" if c is None else str(c))
+        return ui.selectbox(label, [None] + cats, key, default=guess, format_func=lambda c: _("（無）") if c is None else str(c))
     best = guess or next((c for c in free if 2 <= df[c].nunique() <= 12), free[0] if free else None)
     return ui.selectbox(label, cats, key, default=best)
 
@@ -81,12 +103,12 @@ def _quick(chart: str, df, m: dict, o: dict | None = None, sig: dict | None = No
     s.xlabel = s.ylabel = ""
     try:
         res = plots.render(chart, df, m, o or {}, s, sig=sig, orders=orders or {})
-        png, _, _ = export.fig_bytes(res.fig, "PNG", dpi=100, rc=res.rc)
+        png, _ext, _mime = export.fig_bytes(res.fig, "PNG", dpi=100, rc=res.rc)
         export.close(res.fig)
         st.image(png, width="stretch")
-        st.caption("此圖可到「📊 繪圖」頁進一步調整格式並下載高解析度版本。")
+        st.caption(_("此圖可到「📊 繪圖」頁進一步調整格式並下載高解析度版本。"))
     except Exception as err:
-        st.caption(f"(無法產生快速圖：{err})")
+        st.caption(_("(無法產生快速圖：{err})", err=err))
 
 
 def _show(res: bs.StatResult | None, key: str) -> None:
@@ -98,18 +120,18 @@ def _show(res: bs.StatResult | None, key: str) -> None:
         st.markdown("\n".join(f"- {msg}" for msg in res.messages))
     ui.show_tables(res.tables, key, expanded_first=True)
     if res.tables:
-        st.download_button("⬇️ 下載全部結果 (Excel)", ui.tables_excel(res.tables), f"{key}.xlsx", on_click="ignore",
+        st.download_button("⬇️ " + _("下載全部結果 (Excel)"), ui.tables_excel(res.tables), f"{key}.xlsx", on_click="ignore",
                            key=f"dlx:{key}")
 
 
 def render(ds) -> None:
     df = ds.df
     if df.empty:
-        st.info("目前沒有資料。")
+        st.info(_("目前沒有資料。"))
         return
-    name = ui.selectbox("選擇分析方法", ANALYSES, "st:analysis", default="多組比較 (ANOVA / Kruskal-Wallis)")
+    name = ui.selectbox(_("選擇分析方法"), ANALYSES, "st:analysis", default="多組比較 (ANOVA / Kruskal-Wallis)", format_func=_)
     if name.startswith("📖"):
-        st.markdown(GUIDE)
+        st.markdown(GUIDE_EN if i18n.is_en() else GUIDE)
         return
     res = None
     quick = None
@@ -118,11 +140,11 @@ def render(ds) -> None:
         c1, c2, c3 = st.columns(3)
         if name == "描述性統計":
             with c1:
-                vals = ui.multiselect("數值變項", numeric_columns(df), "st:desc:vals", default=numeric_columns(df)[:5])
+                vals = ui.multiselect(_("數值變項"), numeric_columns(df), "st:desc:vals", default=numeric_columns(df)[:5])
             with c2:
-                grp = _cat_sel("分組 (選填)", df, "st:desc:grp", optional=True)
+                grp = _cat_sel(_("分組 (選填)"), df, "st:desc:grp", optional=True)
             with c3:
-                ci = ui.selectbox("信賴水準", [0.90, 0.95, 0.99], "st:desc:ci", default=0.95, format_func=lambda v: f"{v:.0%}")
+                ci = ui.selectbox(_("信賴水準"), [0.90, 0.95, 0.99], "st:desc:ci", default=0.95, format_func=lambda v: f"{v:.0%}")
             if vals:
                 res = bs.descriptive(df, vals, grp, ci)
                 if grp:
@@ -131,32 +153,32 @@ def render(ds) -> None:
                     quick = ("hist", {"x": vals[0]}, {"kde": True}, None)
         elif name == "常態性檢定":
             with c1:
-                vals = ui.multiselect("數值變項", numeric_columns(df), "st:norm:vals", default=numeric_columns(df)[:3])
+                vals = ui.multiselect(_("數值變項"), numeric_columns(df), "st:norm:vals", default=numeric_columns(df)[:3])
             with c2:
-                grp = _cat_sel("分組 (選填)", df, "st:norm:grp", optional=True)
+                grp = _cat_sel(_("分組 (選填)"), df, "st:norm:grp", optional=True)
             if vals:
                 res = bs.normality(df, vals, grp)
                 quick = ("qq", {"y": vals[0], "hue": grp}, {}, None)
         elif name == "變異數同質性檢定":
             with c1:
-                v = _num_sel("數值變項", df, "st:var:v")
+                v = _num_sel(_("數值變項"), df, "st:var:v")
             with c2:
-                g = _cat_sel("分組", df, "st:var:g")
+                g = _cat_sel(_("分組"), df, "st:var:g")
             res = bs.variance_homogeneity(df, v, g)
             quick = ("box", {"x": g, "y": v}, {"points": "散點 (strip)"}, None)
         elif name.startswith("兩組比較"):
             with c1:
-                v = _num_sel("數值變項", df, "st:two:v")
-                g = _cat_sel("分組", df, "st:two:g", exclude=(v,))
+                v = _num_sel(_("數值變項"), df, "st:two:v")
+                g = _cat_sel(_("分組"), df, "st:two:g", exclude=(v,))
             lv = _levels(df, g)
             with c2:
-                a = ui.selectbox("組別 A", lv, f"st:two:a:{g}", default=lv[0] if lv else None)
-                b = ui.selectbox("組別 B", lv, f"st:two:b:{g}", default=lv[1] if len(lv) > 1 else None)
+                a = ui.selectbox(_("組別 A"), lv, f"st:two:a:{g}", default=lv[0] if lv else None)
+                b = ui.selectbox(_("組別 B"), lv, f"st:two:b:{g}", default=lv[1] if len(lv) > 1 else None)
             with c3:
-                alt = ui.selectbox("對立假設", ["two-sided", "greater", "less"], "st:two:alt",
-                                   format_func={"two-sided": "雙尾 (A ≠ B)", "greater": "單尾 (A > B)", "less": "單尾 (A < B)"}.get)
+                alt = ui.selectbox(_("對立假設"), ["two-sided", "greater", "less"], "st:two:alt",
+                                   format_func=lambda v: _({"two-sided": "雙尾 (A ≠ B)", "greater": "單尾 (A > B)", "less": "單尾 (A < B)"}[v]))
             if a == b:
-                st.warning("請選擇兩個不同的組別。")
+                st.warning(_("請選擇兩個不同的組別。"))
             elif a is not None:
                 d = df.assign(**{g: df[g].map(lambda x: str(int(x)) if isinstance(x, float) and x.is_integer() else str(x))})
                 res = bs.two_group(d, v, g, a, b, alt)
@@ -165,22 +187,22 @@ def render(ds) -> None:
                 orders = {g: [a, b]}
         elif name.startswith("配對比較"):
             with c1:
-                a = _num_sel("條件 1 (例如 Before)", df, "st:pair:a", hints=("before", "pre", "baseline"))
+                a = _num_sel(_("條件 1 (例如 Before)"), df, "st:pair:a", hints=("before", "pre", "baseline"))
             with c2:
-                b = _num_sel("條件 2 (例如 After)", df, "st:pair:b", exclude=(a,), hints=("after", "post"))
+                b = _num_sel(_("條件 2 (例如 After)"), df, "st:pair:b", exclude=(a,), hints=("after", "post"))
             with c3:
-                alt = ui.selectbox("對立假設", ["two-sided", "greater", "less"], "st:pair:alt")
-            st.caption("資料需為寬格式：每列一位受試者，兩個欄位分別是兩次測量。若資料是長格式，可先到「資料整理」做樞紐轉換或使用重複量測 ANOVA。")
+                alt = ui.selectbox(_("對立假設"), ["two-sided", "greater", "less"], "st:pair:alt")
+            st.caption(_("資料需為寬格式：每列一位受試者，兩個欄位分別是兩次測量。若資料是長格式，可先到「資料整理」做樞紐轉換或使用重複量測 ANOVA。"))
             res = bs.paired_test(df, a, b, alt)
             quick = ("paired", {"a": a, "b": b}, {}, None)
         elif name.startswith("多組比較"):
             with c1:
-                v = _num_sel("數值變項", df, "st:one:v")
+                v = _num_sel(_("數值變項"), df, "st:one:v")
             with c2:
-                g = _cat_sel("分組", df, "st:one:g", exclude=(v,))
+                g = _cat_sel(_("分組"), df, "st:one:g", exclude=(v,))
             with c3:
-                ph = ui.selectbox("事後檢定", ["Tukey HSD", "Games-Howell", "Dunn (Holm)", "Dunn (Bonferroni)", "Holm t 檢定",
-                                            "Bonferroni t 檢定"], "st:one:ph")
+                ph = ui.selectbox(_("事後檢定"), ["Tukey HSD", "Games-Howell", "Dunn (Holm)", "Dunn (Bonferroni)", "Holm t 檢定",
+                                            "Bonferroni t 檢定"], "st:one:ph", format_func=_)
             order = plots.category_levels(df[g])
             d = df.assign(**{g: plots.as_category_labels(df[g])})
             res = bs.one_way(d, v, g, ph, order)
@@ -190,74 +212,74 @@ def render(ds) -> None:
                      dict(enabled=True, test=test, pairs_mode="all", correction=corr, display="星號 (*)", hide_ns=True))
         elif name == "雙因子 ANOVA":
             with c1:
-                v = _num_sel("數值變項", df, "st:two_way:v")
+                v = _num_sel(_("數值變項"), df, "st:two_way:v")
             with c2:
-                f1 = _cat_sel("因子 A", df, "st:two_way:f1", exclude=(v,))
-                f2 = _cat_sel("因子 B", df, "st:two_way:f2", exclude=(v, f1))
+                f1 = _cat_sel(_("因子 A"), df, "st:two_way:f1", exclude=(v,))
+                f2 = _cat_sel(_("因子 B"), df, "st:two_way:f2", exclude=(v, f1))
             with c3:
-                inter = ui.checkbox("包含交互作用 (A × B)", "st:two_way:int", default=True)
-                typ = ui.selectbox("平方和類型", [2, 3, 1], "st:two_way:typ", format_func=lambda t: f"Type {'I' * t}")
+                inter = ui.checkbox(_("包含交互作用 (A × B)"), "st:two_way:int", default=True)
+                typ = ui.selectbox(_("平方和類型"), [2, 3, 1], "st:two_way:typ", format_func=lambda t: f"Type {'I' * t}")
             if f1 == f2:
-                st.warning("兩個因子不能相同。")
+                st.warning(_("兩個因子不能相同。"))
             else:
                 res = bs.two_way(df, v, f1, f2, inter, typ)
                 quick = ("point", {"x": f1, "y": v, "hue": f2}, {}, None)
         elif name.startswith("重複量測"):
             with c1:
-                v = _num_sel("數值變項", df, "st:rm:v", hints=("response", "value", "score"))
+                v = _num_sel(_("數值變項"), df, "st:rm:v", hints=("response", "value", "score"))
             with c2:
-                subj = _cat_sel("受試者 ID", df, "st:rm:s", hints=("subject", "id", "patient", "mouse", "受試"))
+                subj = _cat_sel(_("受試者 ID"), df, "st:rm:s", hints=("subject", "id", "patient", "mouse", "受試"))
             with c3:
-                w = _cat_sel("重複因子 (時間 / 條件)", df, "st:rm:w", exclude=(subj,), hints=("day", "time", "week", "visit", "condition"))
+                w = _cat_sel(_("重複因子 (時間 / 條件)"), df, "st:rm:w", exclude=(subj,), hints=("day", "time", "week", "visit", "condition"))
             res = bs.rm_anova(df, v, subj, w)
             quick = ("line", {"x": w, "y": v, "units": subj}, {}, None)
         elif name == "相關分析":
             with c1:
-                cols = ui.multiselect("數值變項 (≥ 2)", numeric_columns(df), "st:corr:cols", default=numeric_columns(df)[:5])
+                cols = ui.multiselect(_("數值變項 (≥ 2)"), numeric_columns(df), "st:corr:cols", default=numeric_columns(df)[:5])
             with c2:
-                method = ui.selectbox("方法", ["pearson", "spearman", "kendall"], "st:corr:m",
-                                      format_func={"pearson": "Pearson (線性)", "spearman": "Spearman (等級)", "kendall": "Kendall τ"}.get)
+                method = ui.selectbox(_("方法"), ["pearson", "spearman", "kendall"], "st:corr:m",
+                                      format_func=lambda v: _({"pearson": "Pearson (線性)", "spearman": "Spearman (等級)", "kendall": "Kendall τ"}[v]))
             if len(cols) >= 2:
                 res = bs.correlation(df, cols, method)
                 quick = ("corr", {"values": cols}, {"method": method}, None) if len(cols) > 2 else \
                     ("scatter", {"x": cols[0], "y": cols[1]}, {"fit": "線性", "show_r": True}, None)
         elif name == "線性迴歸":
             with c1:
-                y = _num_sel("依變項 Y", df, "st:lr:y")
+                y = _num_sel(_("依變項 Y"), df, "st:lr:y")
             with c2:
-                xs = ui.multiselect("數值自變項", [c for c in numeric_columns(df) if c != y], "st:lr:xs",
+                xs = ui.multiselect(_("數值自變項"), [c for c in numeric_columns(df) if c != y], "st:lr:xs",
                                     default=[c for c in numeric_columns(df) if c != y][:1])
             with c3:
-                cxs = ui.multiselect("類別自變項", [c for c in categorical_columns(df) if c not in xs and c != y], "st:lr:cx")
+                cxs = ui.multiselect(_("類別自變項"), [c for c in categorical_columns(df) if c not in xs and c != y], "st:lr:cx")
             if xs or cxs:
                 res = bs.linear_regression(df, y, xs, cxs)
                 if len(xs) == 1:
                     quick = ("reg", {"x": xs[0], "y": y}, {}, None)
         elif name == "邏輯迴歸":
             with c1:
-                y = _cat_sel("結果變項 (二元)", df, "st:logit:y", hints=("respond", "outcome", "disease", "event", "status"))
+                y = _cat_sel(_("結果變項 (二元)"), df, "st:logit:y", hints=("respond", "outcome", "disease", "event", "status"))
                 lv = _levels(df, y)
-                pos = ui.selectbox("「事件」類別", lv, f"st:logit:pos:{y}", default="1" if "1" in lv else (lv[-1] if lv else None))
+                pos = ui.selectbox(_("「事件」類別"), lv, f"st:logit:pos:{y}", default="1" if "1" in lv else (lv[-1] if lv else None))
             with c2:
-                xs = ui.multiselect("數值預測變項", [c for c in numeric_columns(df) if c != y], "st:logit:xs")
+                xs = ui.multiselect(_("數值預測變項"), [c for c in numeric_columns(df) if c != y], "st:logit:xs")
             with c3:
-                cxs = ui.multiselect("類別預測變項", [c for c in categorical_columns(df) if c != y and c not in xs], "st:logit:cx")
+                cxs = ui.multiselect(_("類別預測變項"), [c for c in categorical_columns(df) if c != y and c not in xs], "st:logit:cx")
             if xs or cxs:
                 d = df.assign(**{y: plots.as_category_labels(df[y])})
                 res = bs.logistic_regression(d, y, pos, xs, cxs)
             else:
-                st.info("請選擇至少一個預測變項。")
+                st.info(_("請選擇至少一個預測變項。"))
         elif name.startswith("卡方"):
             with c1:
-                r = _cat_sel("列變項", df, "st:chi:r", hints=("treat", "group", "exposure"))
+                r = _cat_sel(_("列變項"), df, "st:chi:r", hints=("treat", "group", "exposure"))
             with c2:
-                c = _cat_sel("欄變項", df, "st:chi:c", exclude=(r,), hints=("outcome", "response", "status"))
+                c = _cat_sel(_("欄變項"), df, "st:chi:c", exclude=(r,), hints=("outcome", "response", "status"))
             with c3:
-                cnt = ui.selectbox("次數欄 (已彙整資料才需要)", [None] + numeric_columns(df), "st:chi:n",
-                                   format_func=lambda x: "（每列一筆觀察）" if x is None else x)
-                yates = ui.checkbox("2×2 表使用 Yates 連續校正", "st:chi:yates", default=True)
+                cnt = ui.selectbox(_("次數欄 (已彙整資料才需要)"), [None] + numeric_columns(df), "st:chi:n",
+                                   format_func=lambda x: _("（每列一筆觀察）") if x is None else x)
+                yates = ui.checkbox(_("2×2 表使用 Yates 連續校正"), "st:chi:yates", default=True)
             if r == c:
-                st.warning("請選擇兩個不同的變項。")
+                st.warning(_("請選擇兩個不同的變項。"))
             else:
                 d = df.assign(**{r: plots.as_category_labels(df[r]), c: plots.as_category_labels(df[c])})
                 res = bs.contingency(d, r, c, cnt, yates)
@@ -265,41 +287,41 @@ def render(ds) -> None:
                     quick = ("stacked", {"x": r, "hue": c}, {"percent": True, "labels": True}, None)
         elif name.startswith("存活分析"):
             with c1:
-                t = _num_sel("時間", df, "st:km:t", hints=("time", "month", "day", "os", "pfs"))
+                t = _num_sel(_("時間"), df, "st:km:t", hints=("time", "month", "day", "os", "pfs"))
             with c2:
-                e = ui.selectbox("事件 (1 = 發生)", list(df.columns), "st:km:e",
+                e = ui.selectbox(_("事件 (1 = 發生)"), list(df.columns), "st:km:e",
                                  default=guess_column(list(df.columns), ["event", "status", "death", "dead"]))
             with c3:
-                g = _cat_sel("分組 (選填)", df, "st:km:g", optional=True, hints=("group", "risk", "treat", "arm"))
-                lm = ui.text("特定時間點存活率 (逗號分隔)", "st:km:lm", default="12, 24, 36")
+                g = _cat_sel(_("分組 (選填)"), df, "st:km:g", optional=True, hints=("group", "risk", "treat", "arm"))
+                lm = ui.text(_("特定時間點存活率 (逗號分隔)"), "st:km:lm", default="12, 24, 36")
             marks = [float(x) for x in lm.replace("，", ",").split(",") if x.strip().replace(".", "", 1).isdigit()]
             d = df.assign(**{g: plots.as_category_labels(df[g])}) if g else df
             res = bs.survival_analysis(d, t, e, g, marks)
             quick = ("km", {"time": t, "event": e, "group": g}, {}, None)
         elif name.startswith("Cox"):
             with c1:
-                t = _num_sel("時間", df, "st:cox:t", hints=("time", "month", "day", "os", "pfs"))
-                e = ui.selectbox("事件 (1 = 發生)", list(df.columns), "st:cox:e",
+                t = _num_sel(_("時間"), df, "st:cox:t", hints=("time", "month", "day", "os", "pfs"))
+                e = ui.selectbox(_("事件 (1 = 發生)"), list(df.columns), "st:cox:e",
                                  default=guess_column(list(df.columns), ["event", "status", "death", "dead"]))
             with c2:
-                covs = ui.multiselect("數值共變數", [c for c in numeric_columns(df) if c not in (t, e)], "st:cox:covs")
+                covs = ui.multiselect(_("數值共變數"), [c for c in numeric_columns(df) if c not in (t, e)], "st:cox:covs")
             with c3:
-                ccovs = ui.multiselect("類別共變數", [c for c in categorical_columns(df) if c not in (t, e) and c not in covs], "st:cox:ccovs")
-                ties = ui.selectbox("同分處理", ["efron", "breslow"], "st:cox:ties")
+                ccovs = ui.multiselect(_("類別共變數"), [c for c in categorical_columns(df) if c not in (t, e) and c not in covs], "st:cox:ccovs")
+                ties = ui.selectbox(_("同分處理"), ["efron", "breslow"], "st:cox:ties")
             if covs or ccovs:
                 d = df.copy()
                 for cc in ccovs:
                     d[cc] = plots.as_category_labels(d[cc])
                 res = bs.cox_regression(d, t, e, covs, ccovs, ties)
             else:
-                st.info("請選擇至少一個共變數。")
+                st.info(_("請選擇至少一個共變數。"))
         elif name.startswith("ROC"):
             with c1:
-                truth = _cat_sel("真實狀態", df, "st:roc:y", hints=("disease", "label", "outcome", "status", "case"))
+                truth = _cat_sel(_("真實狀態"), df, "st:roc:y", hints=("disease", "label", "outcome", "status", "case"))
                 lv = _levels(df, truth)
-                pos = ui.selectbox("陽性類別", lv, f"st:roc:pos:{truth}", default="1" if "1" in lv else (lv[-1] if lv else None))
+                pos = ui.selectbox(_("陽性類別"), lv, f"st:roc:pos:{truth}", default="1" if "1" in lv else (lv[-1] if lv else None))
             with c2:
-                scores = ui.multiselect("預測指標", [c for c in numeric_columns(df) if c != truth], "st:roc:s",
+                scores = ui.multiselect(_("預測指標"), [c for c in numeric_columns(df) if c != truth], "st:roc:s",
                                         default=[c for c in numeric_columns(df) if c != truth][:3])
             if scores:
                 d = df.assign(**{truth: plots.as_category_labels(df[truth])})
@@ -307,51 +329,51 @@ def render(ds) -> None:
                 quick = ("roc", {"truth": truth, "scores": scores}, {"positive": str(pos)}, None)
         elif name.startswith("劑量反應"):
             with c1:
-                x = _num_sel("濃度 / 劑量", df, "st:dose:x", hints=("conc", "dose", "um", "nm"))
+                x = _num_sel(_("濃度 / 劑量"), df, "st:dose:x", hints=("conc", "dose", "um", "nm"))
             with c2:
-                y = _num_sel("反應值", df, "st:dose:y", exclude=(x,), hints=("resp", "inhib", "viab", "%"))
+                y = _num_sel(_("反應值"), df, "st:dose:y", exclude=(x,), hints=("resp", "inhib", "viab", "%"))
             with c3:
-                g = _cat_sel("化合物 / 分組 (選填)", df, "st:dose:g", optional=True, hints=("compound", "drug", "group"))
+                g = _cat_sel(_("化合物 / 分組 (選填)"), df, "st:dose:g", optional=True, hints=("compound", "drug", "group"))
             d = df.assign(**{g: plots.as_category_labels(df[g])}) if g else df
             res = bs.dose_response(d, x, y, g)
             quick = ("dose", {"x": x, "y": y, "hue": g}, {}, None)
         elif name.startswith("多重比較校正"):
             with c1:
-                pc = _num_sel("p 值欄位", df, "st:padj:p", hints=("^p$", "pval", "p_value", "p.value", "pvalue"))
+                pc = _num_sel(_("p 值欄位"), df, "st:padj:p", hints=("^p$", "pval", "p_value", "p.value", "pvalue"))
             with c2:
-                methods = ui.multiselect("校正方法", ["bonferroni", "holm", "fdr_bh", "fdr_by", "sidak", "hommel"], "st:padj:m",
+                methods = ui.multiselect(_("校正方法"), ["bonferroni", "holm", "fdr_bh", "fdr_by", "sidak", "hommel"], "st:padj:m",
                                          default=["bonferroni", "holm", "fdr_bh"])
             if methods:
                 res = bs.p_adjust_table(df, pc, methods)
         elif name.startswith("檢定力"):
             with c1:
-                test = ui.selectbox("檢定類型", ["兩獨立樣本 t 檢定", "配對 / 單一樣本 t 檢定", "單因子 ANOVA"], "st:pw:test")
-                solve = ui.selectbox("要計算", ["樣本數", "檢定力", "效果量"], "st:pw:solve")
+                test = ui.selectbox(_("檢定類型"), ["兩獨立樣本 t 檢定", "配對 / 單一樣本 t 檢定", "單因子 ANOVA"], "st:pw:test", format_func=_)
+                solve = ui.selectbox(_("要計算"), ["樣本數", "檢定力", "效果量"], "st:pw:solve", format_func=_)
             with c2:
-                eff = ui.number("效果量 (Cohen's d 或 f)", "st:pw:eff", default=0.5, min_value=0.01, step=0.05, format="%g",
+                eff = ui.number(_("效果量 (Cohen's d 或 f)"), "st:pw:eff", default=0.5, min_value=0.01, step=0.05, format="%g",
                                 disabled=solve == "效果量")
-                n = ui.number("樣本數 (t 檢定為每組；ANOVA 為總數)", "st:pw:n", default=20.0, min_value=2.0, step=1.0,
+                n = ui.number(_("樣本數 (t 檢定為每組；ANOVA 為總數)"), "st:pw:n", default=20.0, min_value=2.0, step=1.0,
                               disabled=solve == "樣本數")
             with c3:
-                alpha = ui.number("顯著水準 α", "st:pw:alpha", default=0.05, min_value=0.001, max_value=0.2, step=0.005, format="%g")
-                power = ui.number("檢定力 (1 − β)", "st:pw:power", default=0.8, min_value=0.05, max_value=0.999, step=0.05,
+                alpha = ui.number(_("顯著水準 α"), "st:pw:alpha", default=0.05, min_value=0.001, max_value=0.2, step=0.005, format="%g")
+                power = ui.number(_("檢定力 (1 − β)"), "st:pw:power", default=0.8, min_value=0.05, max_value=0.999, step=0.05,
                                   format="%g", disabled=solve == "檢定力")
-                k = int(ui.number("組數 (ANOVA)", "st:pw:k", default=3, min_value=2, max_value=20, step=1)) if test == "單因子 ANOVA" else 3
+                k = int(ui.number(_("組數 (ANOVA)"), "st:pw:k", default=3, min_value=2, max_value=20, step=1)) if test == "單因子 ANOVA" else 3
             try:
                 res = bs.power_analysis(test, solve, None if solve == "效果量" else eff, None if solve == "樣本數" else n, alpha,
                                         None if solve == "檢定力" else power, k_groups=k)
             except Exception as err:
-                st.error(f"無法計算：{err}")
+                st.error(_("無法計算：{err}", err=err))
 
     if res is None and quick is None:
         return
     left, right = st.columns([1.35, 1], gap="large")
     with left:
-        st.markdown(f"#### {res.title if res else name}")
+        st.markdown(f"#### {res.title if res else _(name)}")
         try:
             _show(res, "stats_" + name.split(" ")[0])
         except Exception as err:
-            st.error(f"分析失敗：{err}")
+            st.error(_("分析失敗：{err}", err=err))
     with right:
         if quick:
             chart, m, o, sig = quick

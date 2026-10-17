@@ -33,6 +33,30 @@ def test_catalog_placeholders_match():
     assert [k for k, v in EN.items() if _fields(k) != _fields(v)] == []
 
 
+# 已完成英文化的檔案：程式中每個 _() / _t() / L() 的中文字串都必須在對照表裡
+TRANSLATED_FILES = ["app.py", "biostat/report.py", "biostat/stats.py", "biostat/data.py", "biostat/views/common.py",
+                    "biostat/views/page_data.py", "biostat/views/page_report.py", "biostat/views/page_stats.py"]
+
+
+def test_every_translated_string_has_english():
+    import ast
+    import pathlib
+
+    from biostat.views import page_data, page_stats
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    keys = list(page_stats.ANALYSES) + list(page_data.KINDS) + list(report.STRATEGIES) + list(report.PPT_THEMES)
+    for f in TRANSLATED_FILES:
+        for n in ast.walk(ast.parse((root / f).read_text(encoding="utf-8"))):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("_", "_t", "L") and n.args:
+                a = n.args[0]
+                options = [a] if isinstance(a, ast.Constant) else [a.body, a.orelse] if isinstance(a, ast.IfExp) else \
+                    list(a.value.values) if isinstance(a, ast.Subscript) and isinstance(a.value, ast.Dict) else []
+                keys += [o.value for o in options if isinstance(o, ast.Constant) and isinstance(o.value, str)]
+    missing = sorted({k for k in keys if CJK.search(k) and k not in EN})
+    assert missing == []
+
+
 def test_translate_and_fallback(english):
     assert i18n._("重點摘要") == "Key findings"
     assert i18n._("表 {no}", no="1.2") == "Table 1.2"
@@ -88,7 +112,7 @@ ds = ui.sidebar_data()
 """
 
 
-@pytest.mark.parametrize("page", ["page_data", "page_report"])
+@pytest.mark.parametrize("page", ["page_data", "page_report", "page_stats"])
 def test_pages_render_in_english(page):
     # 註：AppTest 無法取得 app 的 format_func，在英文模式點按鈕會誤判選單值；
     # 英文報告的產生流程已由 test_english_report_has_no_chinese 直接測試。

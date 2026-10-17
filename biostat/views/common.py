@@ -182,7 +182,7 @@ def show_tables(tables: list, prefix: str, expanded_first: bool = True) -> None:
 
 
 def tables_excel(tables: list) -> bytes:
-    return data.to_excel_bytes({name: tab for name, tab in tables if tab is not None and len(tab)})
+    return data.to_excel_bytes({_(name): i18n.table(tab) for name, tab in tables if tab is not None and len(tab)})
 
 
 def swatches(colors: list) -> None:
