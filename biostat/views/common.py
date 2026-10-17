@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from .. import __version__, data, runtime
+from .. import __version__, data, i18n, runtime
+from ..i18n import _
 
 
 # ------------------------------------------------------------------ state 與控制項
@@ -115,35 +116,35 @@ def _load(content: bytes, name: str, sheet, header_row, skiprows: int) -> pd.Dat
 
 def sidebar_data() -> Dataset:
     with st.sidebar:
-        st.markdown("#### 📁 資料來源")
-        up = st.file_uploader("上傳 Excel / CSV", type=["xlsx", "xlsm", "xls", "csv", "tsv", "txt"], key="upload",
-                              help="支援 .xlsx / .xls / .csv / .tsv；CSV 會自動判斷 UTF-8 或 Big5 編碼。")
+        st.markdown("#### 📁 " + _("資料來源"))
+        up = st.file_uploader(_("上傳 Excel / CSV"), type=["xlsx", "xlsm", "xls", "csv", "tsv", "txt"], key="upload",
+                              help=_("支援 .xlsx / .xls / .csv / .tsv；CSV 會自動判斷 UTF-8 或 Big5 編碼。"))
         if up is not None:
             content = up.getvalue()
             digest = hashlib.md5(content).hexdigest()[:10]
             sheets = _sheets(content, up.name)
-            sheet = selectbox("工作表", sheets, key=f"sheet:{digest}") if len(sheets) > 1 else (sheets[0] if sheets else None)
-            with st.expander("讀取設定"):
-                no_header = checkbox("第一列不是欄位名稱", key=f"nohdr:{digest}")
-                header = number("欄位名稱在第幾列", key=f"hdr:{digest}", default=1, min_value=1, max_value=100, step=1,
+            sheet = selectbox(_("工作表"), sheets, key=f"sheet:{digest}") if len(sheets) > 1 else (sheets[0] if sheets else None)
+            with st.expander(_("讀取設定")):
+                no_header = checkbox(_("第一列不是欄位名稱"), key=f"nohdr:{digest}")
+                header = number(_("欄位名稱在第幾列"), key=f"hdr:{digest}", default=1, min_value=1, max_value=100, step=1,
                                 disabled=no_header)
             try:
                 raw = _load(content, up.name, sheet, None if no_header else int(header) - 1, 0)
             except Exception as err:
-                st.error(f"讀取失敗：{err}")
+                st.error(_("讀取失敗：{err}", err=err))
                 raw = pd.DataFrame()
             ds_id = f"{up.name}:{digest}:{sheet}:{header}:{no_header}"
             name = up.name + (f" › {sheet}" if sheet else "")
         else:
             demo = _demo()
             names = list(data.DEMO_DESCRIPTIONS)
-            sheet = selectbox("範例資料集 (未上傳時)", names, key="demo_sheet", default="Groups",
-                              format_func=lambda k: f"{k}：{data.DEMO_DESCRIPTIONS[k].split('：')[0]}")
-            st.caption(data.DEMO_DESCRIPTIONS[sheet])
+            sheet = selectbox(_("範例資料集 (未上傳時)"), names, key="demo_sheet", default="Groups",
+                              format_func=lambda k: f"{k}：{_(data.DEMO_DESCRIPTIONS[k]).split('：')[0].split(':')[0]}")
+            st.caption(_(data.DEMO_DESCRIPTIONS[sheet]))
             raw = demo[sheet]
             ds_id = f"demo:{sheet}"
-            name = f"範例 › {sheet}"
-            st.download_button("⬇️ 下載範例 Excel (15 個工作表)", _demo_xlsx(), "superxtat_demo_data.xlsx",
+            name = _("範例 › {s}", s=sheet)
+            st.download_button("⬇️ " + _("下載範例 Excel (15 個工作表)"), _demo_xlsx(), "superxtat_demo_data.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", on_click="ignore")
 
         stores = st.session_state.setdefault("ds_store", {})
@@ -151,7 +152,8 @@ def sidebar_data() -> Dataset:
         base = store["edited"] if store["edited"] is not None else raw
         df, errors = data.apply_transforms(base, store["transforms"])
         n_t = len(store["transforms"]) + (1 if store["edited"] is not None else 0)
-        st.caption(f"**{name}** · {df.shape[0]:,} 列 × {df.shape[1]} 欄" + (f" · 已套用 {n_t} 個整理步驟" if n_t else ""))
+        st.caption(_("**{name}** · {rows:,} 列 × {cols} 欄", name=name, rows=df.shape[0], cols=df.shape[1])
+                   + (_(" · 已套用 {n} 個整理步驟", n=n_t) if n_t else ""))
         for e in errors:
             st.warning(e)
     return Dataset(df, ds_id, name, store, errors)
@@ -162,7 +164,7 @@ def sidebar_footer() -> None:
         st.divider()
         st.caption(f"SUPER XTAT v{__version__} · {runtime.runtime_label()}")
         if runtime.IS_PYODIDE:
-            st.caption("🔒 瀏覽器版：所有資料只在你的電腦上處理，不會上傳到任何伺服器。")
+            st.caption("🔒 " + _("瀏覽器版：所有資料只在你的電腦上處理，不會上傳到任何伺服器。"))
 
 
 # ------------------------------------------------------------------ 表格顯示
@@ -173,8 +175,8 @@ def show_tables(tables: list, prefix: str, expanded_first: bool = True) -> None:
     for i, (name, tab) in enumerate(tables):
         if tab is None or len(tab) == 0:
             continue
-        with st.expander(f"📄 {name}", expanded=expanded_first and i == 0):
-            st.dataframe(display_table(tab), hide_index=True, width="stretch")
+        with st.expander(f"📄 {_(name)}", expanded=expanded_first and i == 0):
+            st.dataframe(display_table(i18n.table(tab)), hide_index=True, width="stretch")
             st.download_button("⬇️ CSV", tab.to_csv(index=False).encode("utf-8-sig"), f"{prefix}_{name}.csv", "text/csv",
                                key=f"dl:{prefix}:{i}:{name}", on_click="ignore")
 
@@ -237,6 +239,13 @@ div[data-baseweb="tab-highlight"] {background-color: var(--sx-ink);}
 
 def inject_css() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
+
+
+def language_switch() -> None:
+    """側邊欄最上方的語言切換。值存在 session_state["lang"]，app.py 每次執行開頭據此設定語言。"""
+    with st.sidebar:
+        st.segmented_control("Language", list(i18n.LANGS), key="lang", format_func=i18n.LANGS.get,
+                             label_visibility="collapsed", width="stretch")
 
 
 def page_header(kicker: str, title: str, sub: str = "") -> None:

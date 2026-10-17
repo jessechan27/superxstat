@@ -4,6 +4,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from biostat import i18n
+from biostat.i18n import _
 from biostat.views import common as ui
 from biostat.views import page_code, page_data, page_plot, page_report, page_stats
 
@@ -13,8 +15,15 @@ st.set_page_config(page_title="Super Xtat", page_icon=str(ASSETS / "icon.svg"), 
                    initial_sidebar_state="expanded")
 st.logo(str(ASSETS / "logo.svg"), icon_image=str(ASSETS / "icon.svg"), size="large")
 
+# 語言：分段按鈕再點一次會變成「未選取」，這時沿用上一次的語言
+if st.session_state.get("lang") not in i18n.LANGS:
+    st.session_state["lang"] = st.session_state.get("_lang_prev", "zh")
+st.session_state["_lang_prev"] = st.session_state["lang"]
+i18n.set_lang(st.session_state["lang"])
+
 ui.keep_state()
 ui.inject_css()
+ui.language_switch()
 ds = ui.sidebar_data()
 ui.sidebar_footer()
 
@@ -35,12 +44,12 @@ PAGES = [
 
 def _page(render, kicker, title, sub):
     def page():
-        ui.page_header(kicker, title, sub)
+        ui.page_header(kicker, _(title), _(sub))
         render(ds)
 
     return page
 
 
-nav = st.navigation([st.Page(_page(fn, kicker, title, sub), title=label, icon=icon, url_path=path, default=path == "data")
+nav = st.navigation([st.Page(_page(fn, kicker, title, sub), title=_(label), icon=icon, url_path=path, default=path == "data")
                      for fn, label, path, icon, kicker, title, sub in PAGES], position="top")
 nav.run()

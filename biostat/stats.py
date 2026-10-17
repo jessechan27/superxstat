@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from .i18n import _ as _t
+
 ALPHA = 0.05
 _trapz = getattr(np, "trapezoid", None) or np.trapz
 
@@ -641,7 +643,7 @@ def contingency(df: pd.DataFrame, row: str, col: str, count: str | None = None, 
     else:
         ct = pd.crosstab(d[row], d[col])
     if ct.shape[0] < 2 or ct.shape[1] < 2:
-        res.warnings.append("兩個變項都至少需要 2 個類別。")
+        res.warnings.append(_t("兩個變項都至少需要 2 個類別。"))
         return res
     obs = ct.copy()
     obs["總和"] = obs.sum(axis=1)
@@ -668,16 +670,17 @@ def contingency(df: pd.DataFrame, row: str, col: str, count: str | None = None, 
         rr = (a / (a + b)) / (c / (c + dd))
         se_rr = np.sqrt(1 / a - 1 / (a + b) + 1 / c - 1 / (c + dd))
         res.add("2×2 效果量", pd.DataFrame([
-            {"指標": f"勝算比 OR ({ct.index[0]} vs {ct.index[1]}，以 {ct.columns[0]} 為事件)", "估計值": or_,
+            {"指標": _t("勝算比 OR ({a} vs {b}，以 {e} 為事件)", a=ct.index[0], b=ct.index[1], e=ct.columns[0]), "估計值": or_,
              "95% CI 下限": np.exp(np.log(or_) - 1.96 * se), "95% CI 上限": np.exp(np.log(or_) + 1.96 * se)},
-            {"指標": "相對風險 RR", "估計值": rr, "95% CI 下限": np.exp(np.log(rr) - 1.96 * se_rr), "95% CI 上限": np.exp(np.log(rr) + 1.96 * se_rr)},
+            {"指標": _t("相對風險 RR"), "估計值": rr, "95% CI 下限": np.exp(np.log(rr) - 1.96 * se_rr), "95% CI 上限": np.exp(np.log(rr) + 1.96 * se_rr)},
         ]))
     rows.append({"檢定": "Cramér's V (效果量)", "統計量": v, "df": np.nan, "p 值": np.nan})
     res.add("檢定結果", pd.DataFrame(rows))
     low = (exp < 5).mean()
     res.messages.append(f"卡方檢定：χ²({dof}) = {chi2:.3f}，{sig_text(p)}，Cramér's V = {v:.3f}。")
     if low > 0.2:
-        res.warnings.append(f"有 {low * 100:.0f}% 的期望次數 < 5，卡方檢定可能不準確" + ("，請參考 Fisher 精確檢定。" if ct.shape == (2, 2) else "，建議合併類別。"))
+        res.warnings.append(_t("有 {pct:.0f}% 的期望次數 < 5，卡方檢定可能不準確，請參考 Fisher 精確檢定。", pct=low * 100) if ct.shape == (2, 2)
+                            else _t("有 {pct:.0f}% 的期望次數 < 5，卡方檢定可能不準確，建議合併類別。", pct=low * 100))
     return res
 
 

@@ -163,29 +163,31 @@ QUICK_FUNCS = {
 
 
 def describe_transform(t: dict) -> str:
+    from .i18n import _ as _t
+
     k = t["type"]
     if k == "melt":
-        return f"寬轉長：{len(t['value_vars'])} 欄 → 「{t['var_name']}」/「{t['value_name']}」"
+        return _t("寬轉長：{n} 欄 → 「{var}」/「{val}」", n=len(t["value_vars"]), var=t["var_name"], val=t["value_name"])
     if k == "filter":
-        return f"篩選：{t['column']} ∈ {t['values'][:5]}{'…' if len(t['values']) > 5 else ''}"
+        return _t("篩選：{col} ∈ {vals}", col=t["column"], vals=f"{t['values'][:5]}{'…' if len(t['values']) > 5 else ''}")
     if k == "range":
-        return f"篩選：{t['lo']} ≤ {t['column']} ≤ {t['hi']}"
+        return _t("篩選：{lo} ≤ {col} ≤ {hi}", lo=t["lo"], col=t["column"], hi=t["hi"])
     if k == "query":
-        return f"條件：{t['expr']}"
+        return _t("條件：{expr}", expr=t["expr"])
     if k == "dropna":
-        return f"移除缺失值：{', '.join(t['columns']) or '全部欄位'}"
+        return _t("移除缺失值：{cols}", cols=", ".join(t["columns"]) or _t("全部欄位"))
     if k == "func":
-        return f"新增欄位 {t['new']} = {t['func'].replace('x', t['column'])}"
+        return _t("新增欄位 {new} = {f}", new=t["new"], f=t["func"].replace("x", t["column"]))
     if k == "expr":
-        return f"新增欄位 {t['new']} = {t['expr']}"
+        return _t("新增欄位 {new} = {f}", new=t["new"], f=t["expr"])
     if k == "astype":
-        return f"{t['column']} 轉為{'數值' if t['to'] == 'numeric' else '類別'}"
+        return _t("{col} 轉為數值", col=t["column"]) if t["to"] == "numeric" else _t("{col} 轉為類別", col=t["column"])
     if k == "rename":
-        return f"重新命名 {t['old']} → {t['new']}"
+        return _t("重新命名 {old} → {new}", old=t["old"], new=t["new"])
     if k == "recode":
-        return f"重新編碼 {t['column']}（{len(t['mapping'])} 個值）"
+        return _t("重新編碼 {col}（{n} 個值）", col=t["column"], n=len(t["mapping"]))
     if k == "transpose":
-        return "轉置 (以「" + str(t.get("index")) + "」為新欄名)"
+        return _t("轉置 (以「{idx}」為新欄名)", idx=t.get("index"))
     return k
 
 
