@@ -34,8 +34,9 @@ def test_catalog_placeholders_match():
 
 
 # 已完成英文化的檔案：程式中每個 _() / _t() / L() 的中文字串都必須在對照表裡
-TRANSLATED_FILES = ["app.py", "biostat/report.py", "biostat/stats.py", "biostat/data.py", "biostat/views/common.py",
-                    "biostat/views/page_data.py", "biostat/views/page_report.py", "biostat/views/page_stats.py"]
+TRANSLATED_FILES = ["app.py", "biostat/report.py", "biostat/stats.py", "biostat/data.py", "biostat/plots.py",
+                    "biostat/views/common.py", "biostat/views/page_data.py", "biostat/views/page_report.py",
+                    "biostat/views/page_stats.py", "biostat/views/page_plot.py", "biostat/views/page_code.py"]
 
 
 def test_every_translated_string_has_english():
@@ -112,7 +113,7 @@ ds = ui.sidebar_data()
 """
 
 
-@pytest.mark.parametrize("page", ["page_data", "page_report", "page_stats"])
+@pytest.mark.parametrize("page", ["page_data", "page_report", "page_stats", "page_plot", "page_code"])
 def test_pages_render_in_english(page):
     # 註：AppTest 無法取得 app 的 format_func，在英文模式點按鈕會誤判選單值；
     # 英文報告的產生流程已由 test_english_report_has_no_chinese 直接測試。
@@ -122,3 +123,21 @@ def test_pages_render_in_english(page):
     assert not at.exception, [e.value for e in at.exception]
     shown = " ".join(m.value for m in at.markdown)
     assert "Data source" in shown and "資料來源" not in shown
+
+
+def test_translator_is_never_shadowed():
+    """在函式內把 `_` 當變數 (例如 `x, _, _ = ...`) 會讓整個函式的 _() 失效 (UnboundLocalError)。"""
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    bad = {}
+    for path in [root / "app.py", *(root / "biostat").rglob("*.py")]:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imports_ = any(isinstance(n, ast.ImportFrom) and any(a.name == "_" and a.asname is None for a in n.names)
+                       for n in ast.walk(tree))
+        if imports_:
+            lines = sorted({n.lineno for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == "_" and isinstance(n.ctx, ast.Store)})
+            if lines:
+                bad[path.name] = lines
+    assert bad == {}

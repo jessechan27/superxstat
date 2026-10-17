@@ -34,6 +34,7 @@ from . import annotate, fonts
 from .palettes import DIVERGING_CMAPS
 from . import stats as bstats
 from .data import as_category_labels, is_categorical_like, natural_key
+from .i18n import _ as _t
 from .style import Style, build_rc, finalize
 
 PLOT_LOCK = threading.RLock()
@@ -377,7 +378,7 @@ def draw_qq(ax, df, m, o, ctx):
         if o["standardize"]:
             x = (x - x.mean()) / x.std(ddof=1)
         (osm, osr), (slope, inter, _) = sps.probplot(x, dist="norm")
-        label = "樣本" if g is None else str(g)
+        label = _t("樣本") if g is None else str(g)
         if o["show_p"]:
             label += f" (Shapiro {_pf(sps.shapiro(x).pvalue)})"
         ax.scatter(osm, osr, s=ctx.ms2, color=pal[g], alpha=ctx.s.alpha, edgecolors=ctx.edge("none"), label=label, zorder=3)
@@ -574,7 +575,7 @@ def draw_paired(ax, df, m, o, ctx):
         y = top + span * 0.06
         ax.plot([0, 0, 1, 1], [y, y + span * 0.025, y + span * 0.025, y], color="black", lw=1)
         ax.text(0.5, y + span * 0.035, f"{annotate.stars(p)}  ({_pf(p)})", ha="center", va="bottom", fontsize=ctx.s.fs(ctx.s.tick_size))
-        ctx.note(f"{o['test']}：{_pf(p)}，n = {len(d)} 組配對")
+        ctx.note(_t("{test}：{p}，n = {n} 組配對", test=_t(o["test"]), p=_pf(p), n=len(d)))
     ax.set_xticks([0, 1], [a, b])
     ax.set_xlim(-0.5, 1.5)
     ax.set_ylabel("Value")
@@ -711,7 +712,7 @@ def draw_reg(ax, df, m, o, ctx):
                 coef = np.polyfit(sub[x], sub[y], o["order"])
                 pred = np.polyval(coef, sub[x])
                 r2 = 1 - np.sum((sub[y] - pred) ** 2) / np.sum((sub[y] - sub[y].mean()) ** 2)
-                txt = f"{o['order']} 次多項式  R² = {r2:.3f}"
+                txt = _t("{k} 次多項式  R² = {r2:.3f}", k=o["order"], r2=r2)
             if g is not None:
                 txt = f"{g}: {txt}"
             ax.text(0.03, 0.97 - i * 0.075, txt, transform=ax.transAxes, va="top", color=pal[g] if hue else ctx.s.text_color,
@@ -764,7 +765,7 @@ def draw_kde2d(ax, df, m, o, ctx):
 def _matrix(df, m, zscore: str = "無") -> pd.DataFrame:
     cols = m.get("values") or []
     if not cols:
-        raise ValueError("請選擇至少兩個數值欄位")
+        raise ValueError(_t("請選擇至少兩個數值欄位"))
     mat = df[cols].apply(pd.to_numeric, errors="coerce")
     if m.get("index"):
         mat.index = df[m["index"]].astype(str)
@@ -831,7 +832,7 @@ def draw_corr(ax, df, m, o, ctx):
     ctx.table("相關係數", corr.reset_index(names="變項"))
     ctx.table("p 值", pmat.reset_index(names="變項"))
     if o["stars"]:
-        ctx.note("星號：* p < 0.05、** p < 0.01、*** p < 0.001、**** p < 0.0001 (未校正多重比較)")
+        ctx.note(_t("星號：* p < 0.05、** p < 0.01、*** p < 0.001、**** p < 0.0001 (未校正多重比較)"))
 
 
 @register("heatmap", "🔥 熱圖 Heatmap (矩陣)", "矩陣與熱圖", "寬格式數值矩陣 (例如基因 × 樣本)，可做列/欄 Z-score。",
@@ -884,10 +885,10 @@ def draw_pivot_heatmap(ax, df, m, o, ctx):
 def draw_clustermap(df, m, o, ctx):
     cols = m.get("values") or []
     if len(cols) < 2:
-        raise ValueError("請選擇至少兩個數值欄位")
+        raise ValueError(_t("請選擇至少兩個數值欄位"))
     raw = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
     if len(raw) < 2:
-        raise ValueError("去除缺失值後少於 2 列，無法分群")
+        raise ValueError(_t("去除缺失值後少於 2 列，無法分群"))
     labels = df.loc[raw.index, m["index"]].astype(str) if m.get("index") else raw.index.astype(str)
     mat = raw.set_axis(list(labels), axis=0)
     z = {"無": None, "列 (row)": 0, "欄 (column)": 1}[o["zscore"]]
@@ -932,7 +933,7 @@ def draw_clustermap(df, m, o, ctx):
 def draw_pairplot(df, m, o, ctx):
     cols = m["values"][:8]
     if len(cols) < 2:
-        raise ValueError("請選擇至少兩個數值變項")
+        raise ValueError(_t("請選擇至少兩個數值變項"))
     kw = dict(vars=cols, kind=o["kind"], diag_kind=o["diag_kind"], corner=o["corner"], height=o["panel"])
     if m.get("hue"):
         kw.update(hue=m["hue"], hue_order=m["hue_order"], palette=ctx.palette_for(m["hue"], m["hue_order"]))
@@ -987,7 +988,7 @@ def draw_pca(ax, df, m, o, ctx):
         groups = groups.loc[keep] if groups is not None else None
         labels = labels.loc[keep] if labels is not None else None
     if X.shape[0] < 3 or X.shape[1] < 2:
-        raise ValueError("PCA 至少需要 3 個樣本、2 個特徵 (缺失值的列已排除)")
+        raise ValueError(_t("PCA 至少需要 3 個樣本、2 個特徵 (缺失值的列已排除)"))
     A = X.to_numpy(float)
     A = A - A.mean(0)
     if o["scale"]:
@@ -1045,7 +1046,7 @@ def draw_pca(ax, df, m, o, ctx):
     ctx.table("負荷量 (loadings)", pd.DataFrame(load[:, :npc], index=feat_names, columns=[f"PC{k + 1}" for k in range(npc)]).reset_index(names="特徵"))
     sc = pd.DataFrame(scores[:, :npc], columns=[f"PC{k + 1}" for k in range(npc)], index=X.index)
     ctx.table("主成分分數 (scores)", sc.reset_index(names="樣本"))
-    ctx.note(f"PC1 解釋 {ratio[0]:.1%}、PC2 解釋 {ratio[1]:.1%} 的變異 (累積 {ratio[:2].sum():.1%})。")
+    ctx.note(_t("PC1 解釋 {a:.1%}、PC2 解釋 {b:.1%} 的變異 (累積 {c:.1%})。", a=ratio[0], b=ratio[1], c=ratio[:2].sum()))
 
 
 # ============================================================ 生醫專用
@@ -1094,7 +1095,8 @@ def draw_volcano(ax, df, m, o, ctx):
     ax.set_xlabel(r"$\log_2$ Fold Change")
     ax.set_ylabel(r"$-\log_{10}$ " + ("adjusted p" if any(k in m["p"].lower() for k in ("adj", "fdr", "q")) else "p-value"))
     ax.legend()
-    ctx.note(f"上調 {int(up.sum())}、下調 {int(down.sum())} 個 (|log₂FC| ≥ {o['fc_thresh']}, p < {o['p_thresh']})。")
+    ctx.note(_t("上調 {up}、下調 {down} 個 (|log₂FC| ≥ {fc}, p < {p})。", up=int(up.sum()), down=int(down.sum()),
+                fc=o["fc_thresh"], p=o["p_thresh"]))
     out = df.assign(_log2FC=fc, _neglog10p=nlp, Regulation=np.where(up, "Up", np.where(down, "Down", "NS")))
     ctx.table("顯著基因", out[up | down].sort_values("_neglog10p", ascending=False))
 
@@ -1148,7 +1150,7 @@ def draw_km(df, m, o, ctx):
     if o["logrank"] and g_col and len(groups) >= 2:
         chi2, dof, p = bstats.logrank_test(d[t_col], d["_e"], d[g_col])
         ax.text(0.03, 0.05, f"Log-rank {_pf(p)}", transform=ax.transAxes, fontsize=s.fs(s.legend_size))
-        ctx.note(f"Log-rank 檢定：χ²({dof}) = {chi2:.3f}，{_pf(p)}")
+        ctx.note(_t("Log-rank 檢定：χ²({df}) = {c:.3f}，{p}", df=dof, c=chi2, p=_pf(p)))
     ax.set_ylim(0, 1.05 * scale)
     ax.set_xlim(s.xmin if s.xmin is not None else 0, s.xmax if s.xmax is not None else tmax * 1.03)
     ax.set_ylabel(o["ylabel"] + (" (%)" if o["percent"] and "%" not in o["ylabel"] else ""))
@@ -1193,7 +1195,7 @@ def draw_roc(ax, df, m, o, ctx):
     lv = m["truth_order"]
     pos = o["positive"].strip() or ("1" if "1" in lv else (lv[-1] if lv else ""))
     if pos not in lv:
-        raise ValueError(f"陽性類別「{pos}」不存在，可用值：{', '.join(lv)}")
+        raise ValueError(_t("陽性類別「{pos}」不存在，可用值：{vals}", pos=pos, vals=", ".join(lv)))
     cols = m["scores"]
     colors = ctx.s.colors(len(cols))
     res = bstats.roc_analysis(df, truth, pos, cols)
@@ -1209,7 +1211,7 @@ def draw_roc(ax, df, m, o, ctx):
         if auc < 0.5 and o["auto_flip"]:
             fpr, tpr, thr, auc = bstats.roc_curve(y, -s)
             flipped = True
-        label = f"{c}{' (反向)' if flipped else ''}: AUC = {auc:.3f}"
+        label = f"{c}{_t(' (反向)') if flipped else ''}: AUC = {auc:.3f}"
         if o["show_ci"]:
             _, cov = bstats._delong_components(y, (-s if flipped else s)[None, :])
             se = np.sqrt(max(cov[0, 0], 0))
@@ -1227,7 +1229,7 @@ def draw_roc(ax, df, m, o, ctx):
     ax.set_xlabel("1 − Specificity (False positive rate)")
     ax.set_ylabel("Sensitivity (True positive rate)")
     ax.legend(loc="lower right")
-    ctx.note(f"陽性類別：{truth} = {pos}")
+    ctx.note(_t("陽性類別：{y} = {pos}", y=truth, pos=pos))
 
 
 @register("bland", "⚖️ Bland-Altman 一致性圖", "生醫專用", "比較兩種測量方法的一致性：平均偏差與 95% 一致性界限 (LoA)。",
@@ -1258,7 +1260,7 @@ def draw_bland(ax, df, m, o, ctx):
         lr = sps.linregress(mean, diff)
         xs = np.linspace(mean.min(), mean.max(), 50)
         ax.plot(xs, lr.intercept + lr.slope * xs, color="#2a78d6", lw=ctx.s.line_width * 0.9, ls="-.")
-        ctx.note(f"比例偏差：斜率 = {lr.slope:.4f}，{_pf(lr.pvalue)}" + ("（有顯著比例偏差）" if lr.pvalue < 0.05 else ""))
+        ctx.note(_t("比例偏差：斜率 = {s:.4f}，{p}", s=lr.slope, p=_pf(lr.pvalue)) + (_t("（有顯著比例偏差）") if lr.pvalue < 0.05 else ""))
     tr = ax.get_yaxis_transform()
     fs = ctx.s.fs(ctx.s.tick_size) * 0.85
     unit = "%" if o["percent"] else ""
@@ -1268,7 +1270,8 @@ def draw_bland(ax, df, m, o, ctx):
     ax.set_xlabel(f"Mean of {m['a']} and {m['b']}")
     ax.set_ylabel(f"{m['a']} − {m['b']}" + (" (%)" if o["percent"] else ""))
     t1 = sps.ttest_1samp(diff, 0)
-    ctx.note(f"平均偏差 (bias) = {md:.4g}{unit} (SD {sd:.4g})，95% 一致性界限 {lo:.4g} ~ {hi:.4g}{unit}；偏差是否為 0：{_pf(t1.pvalue)}，n = {n}")
+    ctx.note(_t("平均偏差 (bias) = {md:.4g}{u} (SD {sd:.4g})，95% 一致性界限 {lo:.4g} ~ {hi:.4g}{u}；偏差是否為 0：{p}，n = {n}",
+                md=md, u=unit, sd=sd, lo=lo, hi=hi, p=_pf(t1.pvalue), n=n))
 
 
 @register("forest", "🌲 森林圖 Forest plot", "生醫專用", "次族群或統合分析的效應量 (HR / OR / RR / 平均差) 與信賴區間。",
@@ -1349,7 +1352,7 @@ def draw_dose(ax, df, m, o, ctx):
         try:
             f = bstats.fit_4pl(sub[x], sub[y])
         except Exception as err:
-            ctx.note(f"{g if g is not None else '資料'}：4PL 擬合失敗 ({err})")
+            ctx.note(_t("{g}：4PL 擬合失敗 ({err})", g=g if g is not None else _t("資料"), err=err))
             continue
         xs = np.logspace(np.log10(sub[x].min()), np.log10(sub[x].max()), 300)
         label = str(g) if g is not None else "4PL fit"
@@ -1369,7 +1372,7 @@ def draw_dose(ax, df, m, o, ctx):
     if rows:
         ctx.table("4PL 參數", pd.DataFrame(rows))
     if (df[x].pipe(_num) <= 0).any():
-        ctx.note("濃度 ≤ 0 的資料點無法放在對數軸上，已排除。")
+        ctx.note(_t("濃度 ≤ 0 的資料點無法放在對數軸上，已排除。"))
 
 
 @register("manhattan", "🏙️ Manhattan 圖 (GWAS)", "生醫專用", "全基因組關聯分析：依染色體排列的 −log₁₀ p。",
@@ -1411,7 +1414,7 @@ def draw_manhattan(ax, df, m, o, ctx):
     ax.set_xlabel("Chromosome")
     ax.set_ylabel(r"$-\log_{10}(p)$")
     ax.set_ylim(0, max(d["_nlp"].max() * 1.08, -np.log10(o["gw"]) * 1.1))
-    ctx.note(f"共 {len(d)} 個 SNP，{int((d[m['p']] < o['gw']).sum())} 個達全基因組顯著 (p < {o['gw']:g})。")
+    ctx.note(_t("共 {n} 個 SNP，{k} 個達全基因組顯著 (p < {gw:g})。", n=len(d), k=int((d[m["p"]] < o["gw"]).sum()), gw=o["gw"]))
 
 
 # ============================================================ 組成與其他
@@ -1529,7 +1532,7 @@ def draw_summary_bar(ax, df, m, o, ctx):
 def draw_venn(ax, df, m, o, ctx):
     cols = m["sets"][:3]
     if len(cols) < 2:
-        raise ValueError("請選擇 2 或 3 個欄位")
+        raise ValueError(_t("請選擇 2 或 3 個欄位"))
     sets = [set(df[c].dropna().astype(str).str.strip()) - {""} for c in cols]
     colors = ctx.s.colors(len(cols))
     total = len(set().union(*sets)) or 1
@@ -1549,7 +1552,7 @@ def draw_venn(ax, df, m, o, ctx):
         centers = [(-0.55, 0.35), (0.55, 0.35), (0, -0.55)]
         regions = [((-1.0, 0.7), A - B - C, cols[0]), ((1.0, 0.7), B - A - C, cols[1]), ((0, -1.15), C - A - B, cols[2]),
                    ((0, 0.85), (A & B) - C, f"{cols[0]}∩{cols[1]}"), ((-0.62, -0.3), (A & C) - B, f"{cols[0]}∩{cols[2]}"),
-                   ((0.62, -0.3), (B & C) - A, f"{cols[1]}∩{cols[2]}"), ((0, 0.05), A & B & C, "全部交集")]
+                   ((0.62, -0.3), (B & C) - A, f"{cols[1]}∩{cols[2]}"), ((0, 0.05), A & B & C, _t("全部交集"))]
         name_pos = [(-1.3, 1.62), (1.3, 1.62), (0, -1.85)]
     for (cx, cy), c in zip(centers, colors):
         ax.add_patch(Circle((cx, cy), 1.0, facecolor=c, alpha=o["alpha"], edgecolor=c if o["outline"] else "none", lw=ctx.s.line_width))
@@ -1573,7 +1576,7 @@ def draw_venn(ax, df, m, o, ctx):
 def draw_radar(df, m, o, ctx):
     cols = m["values"]
     if len(cols) < 3:
-        raise ValueError("雷達圖至少需要 3 個指標")
+        raise ValueError(_t("雷達圖至少需要 3 個指標"))
     d = df[cols].apply(pd.to_numeric, errors="coerce")
     if m.get("hue"):
         prof = d.groupby(df[m["hue"]]).agg(o["agg"]).reindex(m["hue_order"])
@@ -1607,16 +1610,16 @@ def prepare(spec: ChartSpec, df: pd.DataFrame, m: dict, orders: dict, facet: str
     for f in spec.fields:
         col = m.get(f.key)
         if f.required and (not col or (isinstance(col, list) and len(col) == 0)):
-            raise ValueError(f"請選擇「{f.label}」")
+            raise ValueError(_t("請選擇「{f}」", f=_t(f.label)))
         if not col:
             continue
         if f.kind in ("nums", "anys"):
             missing = [c for c in col if c not in work.columns]
             if missing:
-                raise ValueError(f"找不到欄位：{', '.join(missing)}")
+                raise ValueError(_t("找不到欄位：{cols}", cols=", ".join(missing)))
             continue
         if col not in work.columns:
-            raise ValueError(f"找不到欄位「{col}」")
+            raise ValueError(_t("找不到欄位「{col}」", col=col))
         if f.kind == "cat" or (f.kind == "hue" and is_categorical_like(df[col])):
             work[col] = as_category_labels(work[col])
             lv = [v for v in (orders.get(col) or category_levels(df[col]))]
@@ -1635,7 +1638,7 @@ def prepare(spec: ChartSpec, df: pd.DataFrame, m: dict, orders: dict, facet: str
 
 def _sig_on(ax, df, m, o, ctx, sig: dict, table_rows: list, facet_label=None):
     if _horiz(o):
-        ctx.note("顯著性標記目前僅支援垂直方向的圖。")
+        ctx.note(_t("顯著性標記目前僅支援垂直方向的圖。"))
         return
     x, y, hue = m["x"], m["y"], m.get("hue")
     tab = annotate.add_significance(
@@ -1663,7 +1666,7 @@ def render(key: str, df: pd.DataFrame, m: dict, o: dict, style: Style, *, orders
             warnings.simplefilter("ignore")
             work, m2 = prepare(spec, df, m, orders, facet)
             if work.empty:
-                raise ValueError("篩選後沒有資料可繪製")
+                raise ValueError(_t("篩選後沒有資料可繪製"))
             ctx = Ctx(style, overrides)
             sig_tables: list = []
             use_sig = bool(sig and sig.get("enabled") and spec.sig)

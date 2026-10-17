@@ -131,6 +131,32 @@ ax.set_title("我的圖")
 }
 
 
+# 英文模式下，範本裡的中文註解與圖上文字換成英文 (程式邏輯相同)
+_TEMPLATE_EN = {
+    "# 可用變數：df (目前資料)、pd、np、plt、sns、stats (scipy.stats)、sm、smf (statsmodels)、bstats (本程式統計函式)":
+        "# Available: df (current data), pd, np, plt, sns, stats (scipy.stats), sm, smf (statsmodels), bstats (built-in statistics)",
+    "# 程式中建立的所有 matplotlib 圖都會顯示在下方，並可下載。": "# Every matplotlib figure you create is shown and can be downloaded.",
+    "# 連續數值欄 (排除 0/1、週數這類少數值欄)": "# continuous numeric columns (excludes 0/1 or week-number style columns)",
+    "# 適合當分組的欄 (2–12 類)": "# columns suitable for grouping (2–12 categories)",
+    "# 手動加一個顯著性括號：比較前兩組": "# Add a significance bracket by hand: compare the first two groups",
+    'f"{num_cols[0]} 的分布 (依 {col})"': 'f"Distribution of {num_cols[0]} (by {col})"',
+    "# 需要兩個數值欄 (例如 Before / After)，每列是同一位受試者": "# Needs two numeric columns (e.g. Before / After), one subject per row",
+    "# 數值差距很大時把 Y 軸截斷": "# Break the Y axis when values differ by orders of magnitude",
+    'f"{cat} 次數"': 'f"{cat} counts"',
+    'ax.set_title("我的圖")': 'ax.set_title("My figure")',
+}
+
+
+def template_code(name: str) -> str:
+    """範本程式碼 (依目前語言)。"""
+    from .i18n import is_en
+
+    code = TEMPLATES[name]
+    if is_en():
+        for zh, en in _TEMPLATE_EN.items():
+            code = code.replace(zh, en)
+    return code
+
 def run_user_code(code: str, df: pd.DataFrame, style: Style | None = None) -> dict:
     """執行使用者程式碼，回傳 {figs, stdout, error, rc}。style=None 時只套用中文字型。"""
     out = io.StringIO()
